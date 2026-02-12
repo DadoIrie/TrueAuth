@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "priority": 900,
+  "minVersion": "0.8",
+  "package": "com.dadoirie.trueauth.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "trueauth.refmap.json",
+  "mixins": [
+    "client.ClientboundCustomQueryMixin",
+    "server.ServerboundCustomQueryAnswerMixin",
+    "server.ServerLoginMixin",
+    "server.WhitelistCommandMixin"
+  ],
+  "client": [
+    "client.ClientHandshakeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
