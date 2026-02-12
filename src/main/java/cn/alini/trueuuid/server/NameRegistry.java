@@ -23,7 +23,7 @@ public class NameRegistry {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     public NameRegistry() {
-        this.file = FMLPaths.GAMEDIR.get().resolve(".private/trueauth-registry.json");
+        this.file = FMLPaths.GAMEDIR.get().resolve(".private/trueauth/trueauth-registry.json");
         load();
     }
 

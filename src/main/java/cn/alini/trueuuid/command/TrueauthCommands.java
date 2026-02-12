@@ -34,6 +34,7 @@ import java.io.Writer;
 import com.google.gson.*;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
@@ -486,8 +487,12 @@ public class TrueauthCommands {
     
     // Password remove command - completely removes player from password storage
     private static int cmdPasswordRemove(CommandSourceStack src, String playerName) {
+        if (!FMLEnvironment.dist.isDedicatedServer()) {
+            src.sendFailure(Component.literal("[TrueAuth] This command is only available on dedicated servers"));
+            return 0;
+        }
         try {
-            PlayerPasswordStorage storage = PlayerPasswordStorage.getInstance();
+            PlayerPasswordStorage storage = TrueauthRuntime.PASSWORD_STORAGE;
             if (storage.hasStoredPassword(playerName)) {
                 storage.removePlayer(playerName);
                 src.sendSuccess(() -> Component.literal("[TrueAuth] Successfully removed player from password storage: " + playerName), false);

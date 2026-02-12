@@ -206,7 +206,7 @@ public abstract class ServerLoginMixin {
                     reset(); ci.cancel(); return;
                 }
                 
-                PlayerPasswordStorage storage = PlayerPasswordStorage.getInstance();
+                PlayerPasswordStorage storage = TrueauthRuntime.PASSWORD_STORAGE;
                 
                 if (hasPassword && clientPasswordHash != null) {
                     // Check if player already has a stored password

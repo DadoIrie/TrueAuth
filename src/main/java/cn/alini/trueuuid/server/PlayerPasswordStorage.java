@@ -19,30 +19,17 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class PlayerPasswordStorage {
     private static final Logger LOGGER = LoggerFactory.getLogger(Trueauth.MODID);
-    private static final String PASSWORD_FILE = ".private/offlineplayers/auth_hash.json";
-    private static PlayerPasswordStorage instance;
+    private static final String PASSWORD_FILE = ".private/trueauth/offlineplayers/auth_hash.json";
     
     private final Path file;
     private final Gson gson = new Gson();
     private final Map<String, String> passwordCache = new ConcurrentHashMap<>();
     private long lastModified = -1;
     
-    private PlayerPasswordStorage() {
-        // Use the game directory for .private folder
+    public PlayerPasswordStorage() {
         this.file = FMLPaths.GAMEDIR.get().resolve(PASSWORD_FILE);
         initFile();
         loadCache();
-    }
-    
-    /**
-     * Get the singleton instance
-     * @return The PlayerPasswordStorage instance
-     */
-    public static synchronized PlayerPasswordStorage getInstance() {
-        if (instance == null) {
-            instance = new PlayerPasswordStorage();
-        }
-        return instance;
     }
     
     private void debug(String message, Object... args) {
