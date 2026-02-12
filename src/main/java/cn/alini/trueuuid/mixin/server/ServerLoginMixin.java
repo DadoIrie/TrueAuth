@@ -79,7 +79,7 @@ public abstract class ServerLoginMixin {
                         GameProfile newProfile = new GameProfile(premium, name);
                         this.authenticatedProfile = newProfile;
                         // Record success (keep registry/cache consistent)
-                        TrueauthRuntime.NAME_REGISTRY.recordSuccess(name, premium, ip);
+                        TrueauthRuntime.NAME_REGISTRY.recordSuccess(name, premium, ip, true);
                         TrueauthRuntime.IP_GRACE.record(name, ip, premium);
                         return; // Done, treated as premium
                     }
@@ -198,7 +198,7 @@ public abstract class ServerLoginMixin {
                 
                 // Check if known premium name should be denied offline access (before any password logic)
                 if (TrueauthConfig.knownPremiumDenyOffline() && TrueauthRuntime.NAME_REGISTRY.isKnownPremiumName(name)) {
-                    String msg = "This name is bound to a premium UUID. Offline mode is not allowed. Please check your network and try again.";
+                    String msg = "This name is bound to a premium UUID.";
                     if (TrueauthConfig.debug()) {
                         System.out.println("[TrueAuth] denying offline entry for known premium name: " + name);
                     }
@@ -301,8 +301,7 @@ public abstract class ServerLoginMixin {
 
                                 var res = resOpt.get();
 
-                                // 成功：记录注册表/近期 IP；替换为正版 UUID + 名称大小写矫正 + 注入皮肤
-                                TrueauthRuntime.NAME_REGISTRY.recordSuccess(res.name(), res.uuid(), ip);
+                                TrueauthRuntime.NAME_REGISTRY.recordSuccess(res.name(), res.uuid(), ip, true);
                                 TrueauthRuntime.IP_GRACE.record(res.name(), ip, res.uuid());
 
                                 GameProfile newProfile = new GameProfile(res.uuid(), res.name());
@@ -381,10 +380,12 @@ public abstract class ServerLoginMixin {
 
     @Unique
     private void sendDisconnectWithReason(Component reason) {
-        // During LOGIN phase, only ClientboundLoginDisconnectPacket can be sent
-        // ClientboundDisconnectPacket is for PLAY phase and will cause encoder error
-        this.connection.send(new ClientboundLoginDisconnectPacket(reason));
-        this.connection.disconnect(reason);
+        new Thread(() -> {
+            try {
+                this.connection.send(new ClientboundLoginDisconnectPacket(reason));
+            } catch (Throwable ignored) {}
+            this.connection.disconnect(reason);
+        }, "TrueUUID-AsyncDisconnect").start();
     }
 
     @Unique

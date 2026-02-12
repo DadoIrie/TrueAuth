@@ -231,7 +231,7 @@ public class TrueauthCommands {
             src.sendFailure(Component.literal("Premium record not found in registry for name: " + name));
             return 0;
         }
-        UUID premium = reg.get().premiumUuid;
+        UUID premium = reg.get().uuid;
         UUID offline = UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(StandardCharsets.UTF_8));
 
         Path worldRoot = server.getWorldPath(LevelResource.ROOT);
@@ -314,7 +314,7 @@ public class TrueauthCommands {
         // 简化：复用 getPremiumUuid，并构造一个 Entry
         return TrueauthRuntime.NAME_REGISTRY.getPremiumUuid(name).map(u -> {
             NameRegistry.Entry e = new NameRegistry.Entry();
-            e.premiumUuid = u;
+            e.uuid = u;
             return e;
         });
     }

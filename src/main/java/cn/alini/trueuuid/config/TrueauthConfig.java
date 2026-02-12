@@ -111,7 +111,7 @@ public final class TrueauthConfig {
                     .define("nomojang.enabled", false);
             mojangReverseProxy = b.comment("Mojang reverse proxy address for those who don't want to use a proxy on their server, defaults to Mojang address").define("mojangReverseProxy", "https://sessionserver.mojang.com");
             // Whitelist feature
-            whitelistEnabled = b.comment("Enable whitelist feature, only players in whitelist.json or ops.json can join the server")
+            whitelistEnabled = b.comment("Enable whitelist feature.")
                     .define("whitelist.enabled", false);
             b.pop();
         }

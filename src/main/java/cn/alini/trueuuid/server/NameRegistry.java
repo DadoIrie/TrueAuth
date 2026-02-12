@@ -12,7 +12,9 @@ import java.util.*;
 
 public class NameRegistry {
     public static class Entry {
-        public UUID premiumUuid;
+        public UUID uuid;
+        public boolean premium;
+        public String password;
         public long firstVerifiedAt;
         public long lastVerifiedAt;
         public String lastSuccessIp;
@@ -29,17 +31,18 @@ public class NameRegistry {
 
     public synchronized Optional<UUID> getPremiumUuid(String name) {
         Entry e = map.get(name.toLowerCase(Locale.ROOT));
-        return e == null ? Optional.empty() : Optional.ofNullable(e.premiumUuid);
+        return e == null ? Optional.empty() : Optional.ofNullable(e.uuid);
     }
 
     public synchronized boolean isKnownPremiumName(String name) {
         return map.containsKey(name.toLowerCase(Locale.ROOT));
     }
 
-    public synchronized void recordSuccess(String name, UUID premiumUuid, String ip) {
+    public synchronized void recordSuccess(String name, UUID uuid, String ip, boolean premium) {
         String k = name.toLowerCase(Locale.ROOT);
         Entry e = map.getOrDefault(k, new Entry());
-        e.premiumUuid = premiumUuid;
+        e.uuid = uuid;
+        e.premium = premium;
         long now = Instant.now().toEpochMilli();
         if (e.firstVerifiedAt == 0) e.firstVerifiedAt = now;
         e.lastVerifiedAt = now;
@@ -56,7 +59,9 @@ public class NameRegistry {
                     for (String k : o.keySet()) {
                         JsonObject e = o.getAsJsonObject(k);
                         Entry en = new Entry();
-                        en.premiumUuid = UUID.fromString(e.get("premiumUuid").getAsString());
+                        en.uuid = UUID.fromString(e.get("uuid").getAsString());
+                        en.premium = e.get("premium").getAsBoolean();
+                        if (e.has("password")) en.password = e.get("password").getAsString();
                         en.firstVerifiedAt = e.get("firstVerifiedAt").getAsLong();
                         en.lastVerifiedAt = e.get("lastVerifiedAt").getAsLong();
                         if (e.has("lastSuccessIp")) en.lastSuccessIp = e.get("lastSuccessIp").getAsString();
@@ -79,7 +84,9 @@ public class NameRegistry {
             JsonObject o = new JsonObject();
             for (Map.Entry<String, Entry> me : map.entrySet()) {
                 JsonObject e = new JsonObject();
-                e.addProperty("premiumUuid", me.getValue().premiumUuid.toString());
+                e.addProperty("uuid", me.getValue().uuid.toString());
+                e.addProperty("premium", me.getValue().premium);
+                if (me.getValue().password != null) e.addProperty("password", me.getValue().password);
                 e.addProperty("firstVerifiedAt", me.getValue().firstVerifiedAt);
                 e.addProperty("lastVerifiedAt", me.getValue().lastVerifiedAt);
                 if (me.getValue().lastSuccessIp != null)
