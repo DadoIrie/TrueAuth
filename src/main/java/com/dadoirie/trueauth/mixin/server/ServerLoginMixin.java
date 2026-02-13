@@ -19,6 +19,7 @@ import net.minecraft.network.protocol.login.ServerboundCustomQueryAnswerPacket;
 import net.minecraft.network.protocol.login.ServerboundHelloPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerLoginPacketListenerImpl;
+import net.neoforged.fml.loading.LoadingModList;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -28,7 +29,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -115,7 +118,26 @@ public abstract class ServerLoginMixin {
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void trueauth$onTick(CallbackInfo ci) {
         if (this.trueauth$txId == 0 || this.trueauth$sentAt == 0L) return;
-        ci.cancel(); // 阻止原版 tick 推进登录状
+        
+        // Check if ForgifiedFabricAPI is present and handle accordingly
+        if (isForgifiedFabricAPIPresent()) {
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] ForgifiedFabricAPI detected - allowing tick to continue");
+            }
+            // Don't cancel the tick - let ForgifiedFabricAPI process but check timeout
+            handleTimeoutCheck();
+        } else {
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] ForgifiedFabricAPI not present - blocking tick");
+            }
+            // Original behavior when ForgifiedFabricAPI not present
+            ci.cancel();
+            handleTimeoutCheck();
+        }
+    }
+    
+    @Unique
+    private void handleTimeoutCheck() {
         long timeoutMs = TrueauthConfig.timeoutMs();
         if (timeoutMs <= 0) return;
 
@@ -139,6 +161,19 @@ public abstract class ServerLoginMixin {
             reset();
         }
     }
+    
+    @Unique
+    private static boolean isForgifiedFabricAPIPresent() {
+        return isModLoaded("fabric_networking_api_v1");
+    }
+    
+    @Unique
+    private static boolean isModLoaded(String modId) {
+        if (LoadingModList.get() != null) {
+            return LoadingModList.get().getModFileById(modId) != null;
+        }
+        return false;
+    }
 
     @Inject(method = "handleCustomQueryPacket", at = @At("HEAD"), cancellable = true)
     private void trueauth$onLoginCustom(ServerboundCustomQueryAnswerPacket packet, CallbackInfo ci) {
@@ -161,6 +196,7 @@ public abstract class ServerLoginMixin {
                 System.out.println("[TrueAuth] auth failed, player: " + (this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>") + ", ip: " + ip + ", reason: missing data");
             }
             handleAuthFailure(ip, "missing data");
+            clearFabricApiQueryChannel(this.trueauth$txId);
             reset(); ci.cancel(); return;
         }
 
@@ -174,6 +210,7 @@ public abstract class ServerLoginMixin {
                 System.out.println("[TrueAuth] player not in whitelist, player: " + playerName + ", ip: " + ip + ", message: " + msg);
             }
             sendDisconnectWithReason(Component.literal(msg));
+            clearFabricApiQueryChannel(this.trueauth$txId);
             reset(); ci.cancel(); return;
         }
 
@@ -203,6 +240,7 @@ public abstract class ServerLoginMixin {
                         System.out.println("[TrueAuth] denying offline entry for known premium name: " + name);
                     }
                     sendDisconnectWithReason(Component.literal(msg));
+                    clearFabricApiQueryChannel(this.trueauth$txId);
                     reset(); ci.cancel(); return;
                 }
                 
@@ -219,6 +257,7 @@ public abstract class ServerLoginMixin {
                                 System.out.println("[TrueAuth] password auth succeeded, player: " + name + ", ip: " + ip);
                             }
                             AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
+                            clearFabricApiQueryChannel(this.trueauth$txId);
                             reset(); ci.cancel(); return;
                         } else {
                             // Password doesn't match
@@ -227,6 +266,7 @@ public abstract class ServerLoginMixin {
                                 System.out.println("[TrueAuth] password auth failed, player: " + name + ", ip: " + ip + ", message: " + msg);
                             }
                             sendDisconnectWithReason(Component.literal(msg));
+                            clearFabricApiQueryChannel(this.trueauth$txId);
                             reset(); ci.cancel(); return;
                         }
                     } else {
@@ -236,6 +276,7 @@ public abstract class ServerLoginMixin {
                             System.out.println("[TrueAuth] new player registered, player: " + name + ", ip: " + ip);
                         }
                         AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
+                        clearFabricApiQueryChannel(this.trueauth$txId);
                         reset(); ci.cancel(); return;
                     }
                 } else {
@@ -247,6 +288,7 @@ public abstract class ServerLoginMixin {
                             System.out.println("[TrueAuth] password auth failed, player: " + name + ", ip: " + ip + ", message: " + msg);
                         }
                         sendDisconnectWithReason(Component.literal(msg));
+                        clearFabricApiQueryChannel(this.trueauth$txId);
                         reset(); ci.cancel(); return;
                     }
                     // New player without password - fall through to existing logic
@@ -260,6 +302,7 @@ public abstract class ServerLoginMixin {
                 System.out.println("[TrueAuth] auth failed, player: " + (this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>") + ", ip: " + ip + ", reason: client rejected");
             }
             handleAuthFailure(ip, "client rejected");
+            clearFabricApiQueryChannel(this.trueauth$txId);
             reset(); ci.cancel(); return;
         }
 
@@ -268,6 +311,7 @@ public abstract class ServerLoginMixin {
             if (TrueauthConfig.debug()) {
                 System.out.println("[TrueAuth] duplicate auth packet ignored, txId: " + this.trueauth$txId);
             }
+            clearFabricApiQueryChannel(this.trueauth$txId);
             ci.cancel();
             return;
         }
@@ -277,6 +321,9 @@ public abstract class ServerLoginMixin {
         try {
             // 立即取消原始调用（以免继续执行原有逻辑），但不要 reset()，保留状态直到回调完成
             ci.cancel();
+            
+            // Clear TrueAuth's transaction ID from Fabric API's channels map to prevent blocking
+            clearFabricApiQueryChannel(this.trueauth$txId);
 
             SessionCheck.hasJoinedAsync(this.authenticatedProfile.getName(), this.trueauth$nonce, ip)
                     .whenComplete((resOpt, throwable) -> {
@@ -315,7 +362,13 @@ public abstract class ServerLoginMixin {
                                     }
                                 }
                                 try {
+                                    if (TrueauthConfig.debug()) {
+                                        System.out.println("[TrueAuth] HANDOFF: calling startClientVerification for " + newProfile.getName());
+                                    }
                                     trueauth$startClientVerification(newProfile);
+                                    if (TrueauthConfig.debug()) {
+                                        System.out.println("[TrueAuth] HANDOFF: startClientVerification completed for " + newProfile.getName());
+                                    }
                                 } catch (Exception e) {
                                     if (TrueauthConfig.debug()) {
                                         System.out.println("[TrueAuth] call failed: " + e);
@@ -396,6 +449,50 @@ public abstract class ServerLoginMixin {
         this.trueauth$txId = 0;
         this.trueauth$nonce = null;
         this.trueauth$sentAt = 0L;
+    }
+    
+    @Unique
+    private void clearFabricApiQueryChannel(int txId) {
+        if (!isForgifiedFabricAPIPresent()) return;
+        
+        try {
+            // Get the addon from Fabric API's NetworkHandlerExtensions interface
+            Object addon = null;
+            for (Class<?> iface : this.getClass().getInterfaces()) {
+                if (iface.getName().contains("NetworkHandlerExtensions")) {
+                    Method getAddonMethod = iface.getMethod("getAddon");
+                    addon = getAddonMethod.invoke(this);
+                    break;
+                }
+            }
+            
+            if (addon == null) return;
+            
+            // Access the channels map from ServerLoginNetworkAddon
+            Field channelsField = null;
+            for (Field f : addon.getClass().getDeclaredFields()) {
+                if (Map.class.isAssignableFrom(f.getType())) {
+                    channelsField = f;
+                    break;
+                }
+            }
+            
+            if (channelsField != null) {
+                channelsField.setAccessible(true);
+                @SuppressWarnings("unchecked")
+                Map<Integer, ?> channels = (Map<Integer, ?>) channelsField.get(addon);
+                if (channels != null && channels.containsKey(txId)) {
+                    channels.remove(txId);
+                    if (TrueauthConfig.debug()) {
+                        System.out.println("[TrueAuth] cleared Fabric API query channel for txId: " + txId);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] failed to clear Fabric API query channel: " + t.getMessage());
+            }
+        }
     }
 
     @Invoker("startClientVerification")
