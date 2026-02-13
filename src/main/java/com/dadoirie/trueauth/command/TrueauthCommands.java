@@ -3,7 +3,6 @@ package com.dadoirie.trueauth.command;
 import com.dadoirie.trueauth.Trueauth;
 import com.dadoirie.trueauth.config.TrueauthConfig;
 import com.dadoirie.trueauth.server.NameRegistry;
-import com.dadoirie.trueauth.server.PlayerPasswordStorage;
 import com.dadoirie.trueauth.server.TrueauthRuntime;
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import com.mojang.brigadier.CommandDispatcher;
@@ -32,7 +31,6 @@ import java.io.Writer;
 import com.google.gson.*;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
@@ -86,11 +84,12 @@ public class TrueauthCommands {
                 .then(Commands.literal("reload")
                         .executes(ctx -> cmdConfigReload(ctx.getSource()))
                 )
-                .then(Commands.literal("password")
+                // TODO: Rewrite to use NameRegistry.removeEntry() instead of PlayerPasswordStorage
+                /* .then(Commands.literal("password")
                         .then(Commands.literal("remove")
                                 .then(Commands.argument("player", StringArgumentType.word())
                                         .executes(ctx -> cmdPasswordRemove(ctx.getSource(), StringArgumentType.getString(ctx, "player")))))
-                )
+                ) */
         );
 
 
@@ -483,8 +482,9 @@ public class TrueauthCommands {
 
     }
     
+    // TODO: Rewrite to use NameRegistry.removeEntry() instead of PlayerPasswordStorage
     // Password remove command - completely removes player from password storage
-    private static int cmdPasswordRemove(CommandSourceStack src, String playerName) {
+    /* private static int cmdPasswordRemove(CommandSourceStack src, String playerName) {
         if (!FMLEnvironment.dist.isDedicatedServer()) {
             src.sendFailure(Component.literal("[TrueAuth] This command is only available on dedicated servers"));
             return 0;
@@ -503,5 +503,5 @@ public class TrueauthCommands {
             src.sendFailure(Component.literal("[TrueAuth] Failed to remove player from password storage: " + playerName + ": " + ex.getMessage()));
             return 0;
         }
-    }
+    } */
 }

@@ -79,7 +79,7 @@ public abstract class ServerLoginMixin {
                         GameProfile newProfile = new GameProfile(premium, name);
                         this.authenticatedProfile = newProfile;
                         // Record success (keep registry/cache consistent)
-                        TrueauthRuntime.NAME_REGISTRY.recordSuccess(name, premium, ip, true);
+                        TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(name, premium, ip);
                         TrueauthRuntime.IP_GRACE.record(name, ip, premium);
                         return; // Done, treated as premium
                     }
@@ -211,6 +211,19 @@ public abstract class ServerLoginMixin {
         }
 
         boolean ackOk = payload.ok();
+        // Check if online player is trying to use a name already registered as offline
+        if (this.server.isDedicatedServer() && ackOk) {
+            if (TrueauthRuntime.NAME_REGISTRY.isRegistered(playerName) && !TrueauthRuntime.NAME_REGISTRY.isPremium(playerName)) {
+                String msg = "This name is already registered as an offline player.";
+                if (TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] online player blocked - name registered as offline, player: " + playerName + ", ip: " + ip);
+                }
+                sendDisconnectWithReason(Component.literal(msg));
+                clearFabricApiQueryChannel(this.trueauth$txId);
+                reset(); ci.cancel(); return;
+            }
+        }
+
         boolean hasPassword = payload.hasPassword();
         String clientPasswordHash = payload.passwordHash();
         
@@ -230,7 +243,7 @@ public abstract class ServerLoginMixin {
                 String name = this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>";
                 
                 // Check if known premium name should be denied offline access (before any password logic)
-                if (TrueauthConfig.knownPremiumDenyOffline() && TrueauthRuntime.NAME_REGISTRY.isKnownPremiumName(name)) {
+                if (TrueauthConfig.knownPremiumDenyOffline() && TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
                     String msg = "This name is bound to a premium UUID.";
                     if (TrueauthConfig.debug()) {
                         System.out.println("[TrueAuth] denying offline entry for known premium name: " + name);
@@ -240,15 +253,14 @@ public abstract class ServerLoginMixin {
                     reset(); ci.cancel(); return;
                 }
                 
-                PlayerPasswordStorage storage = TrueauthRuntime.PASSWORD_STORAGE;
-                
                 if (hasPassword && clientPasswordHash != null) {
                     // Check if player already has a stored password
-                    if (storage.hasStoredPassword(name)) {
+                    if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && !TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
                         // Existing player - verify password
-                        String serverPasswordHash = storage.getPasswordHash(name);
+                        String serverPasswordHash = TrueauthRuntime.NAME_REGISTRY.getPassword(name);
                         if (serverPasswordHash != null && serverPasswordHash.equals(clientPasswordHash)) {
                             // Password matches, allow access
+                            TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(name, this.authenticatedProfile.getId(), ip, clientPasswordHash);
                             if (TrueauthConfig.debug()) {
                                 System.out.println("[TrueAuth] password auth succeeded, player: " + name + ", ip: " + ip);
                             }
@@ -267,7 +279,7 @@ public abstract class ServerLoginMixin {
                         }
                     } else {
                         // New player - store their password and allow access
-                        storage.storePassword(name, clientPasswordHash);
+                        TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(name, this.authenticatedProfile.getId(), ip, clientPasswordHash);
                         if (TrueauthConfig.debug()) {
                             System.out.println("[TrueAuth] new player registered, player: " + name + ", ip: " + ip);
                         }
@@ -276,18 +288,14 @@ public abstract class ServerLoginMixin {
                         reset(); ci.cancel(); return;
                     }
                 } else {
-                    // No password provided
-                    if (storage.hasStoredPassword(name)) {
-                        // Existing player without password - require password
-                        String msg = "Incorrect password! If this is a mistake, contact the server administrator.";
-                        if (TrueauthConfig.debug()) {
-                            System.out.println("[TrueAuth] password auth failed, player: " + name + ", ip: " + ip + ", message: " + msg);
-                        }
-                        sendDisconnectWithReason(Component.literal(msg));
-                        clearFabricApiQueryChannel(this.trueauth$txId);
-                        reset(); ci.cancel(); return;
+                    // No password provided - technical error
+                    String msg = "Password retrieval failed. Please restart your game and try again.";
+                    if (TrueauthConfig.debug()) {
+                        System.out.println("[TrueAuth] no password provided, player: " + name + ", ip: " + ip);
                     }
-                    // New player without password - fall through to existing logic
+                    sendDisconnectWithReason(Component.literal(msg));
+                    clearFabricApiQueryChannel(this.trueauth$txId);
+                    reset(); ci.cancel(); return;
                 }
             }
         }
@@ -344,7 +352,7 @@ public abstract class ServerLoginMixin {
 
                                 var res = resOpt.get();
 
-                                TrueauthRuntime.NAME_REGISTRY.recordSuccess(res.name(), res.uuid(), ip, true);
+                                TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip);
                                 TrueauthRuntime.IP_GRACE.record(res.name(), ip, res.uuid());
 
                                 GameProfile newProfile = new GameProfile(res.uuid(), res.name());
