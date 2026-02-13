@@ -5,13 +5,10 @@ import com.dadoirie.trueauth.config.TrueauthConfig;
 import com.dadoirie.trueauth.net.AuthAnswerPayload;
 import com.dadoirie.trueauth.net.AuthPayload;
 import com.dadoirie.trueauth.net.AuthQueryTracker;
-import com.dadoirie.trueauth.net.NetIds;
 import com.dadoirie.trueauth.server.*;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
-import io.netty.buffer.Unpooled;
 import net.minecraft.network.Connection;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.login.ClientboundCustomQueryPacket;
 import net.minecraft.network.protocol.login.ClientboundLoginDisconnectPacket;
@@ -155,8 +152,7 @@ public abstract class ServerLoginMixin {
             AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.TIMEOUT);
             reset();
         } else {
-            String msg = TrueauthConfig.timeoutKickMessage();
-            Component reason = Component.literal(msg != null ? msg : "Login timeout, account verification incomplete");
+            Component reason = Component.literal(TrueauthConfig.timeoutKickMessage());
             sendDisconnectWithReason(reason);
             reset();
         }
