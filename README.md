@@ -124,6 +124,7 @@ Backups:
 - Data integrity: With the new policies, once a name is proven premium, offline fallback is denied to prevent “dual identity” and data split.
 - If the client is unmodded: it will not respond to the custom login query. Depending on config/policies, the server may kick or fall back to offline only for unknown names.
 - **⚠️ Incompatible with OfflineAuth mod**: This fork uses its own built-in password authentication system for offline players and is not compatible with the OfflineAuth mod. Do not use both together.
+- **Forgified Fabric API**: Added compatibility with Forgified Fabric API's networking module.
 
 ## Building
 
@@ -150,5 +151,5 @@ Backups:
 - ForgeGradle.
 
 ---
-Based on [TrueAuth](https://github.com/YuWan-030/TrueAuth/tree/1.21) by [@YuWan-030](https://github.com/YuWan-030), licensed under LGPL‑3.0
+Based on [TrueAuth](https://github.com/YuWan-030/TrueAuth/tree/1.21) NeoForge 1.21.1 branch by [@YuWan-030](https://github.com/YuWan-030), licensed under LGPL‑3.0
 Forked mod maintained by: [@DadoIrie](https://github.com/DadoIrie)
