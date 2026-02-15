@@ -226,9 +226,11 @@ public abstract class ServerLoginMixin {
 
         boolean hasPassword = payload.hasPassword();
         String clientPasswordHash = payload.passwordHash();
+        boolean hasNewPassword = payload.hasNewPassword();
+        String clientNewPasswordHash = payload.newPasswordHash();
         
         if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] client auth packet ackOk: " + ackOk + ", hasPassword: " + hasPassword);
+            System.out.println("[TrueAuth] client auth packet ackOk: " + ackOk + ", hasPassword: " + hasPassword + ", hasNewPassword: " + hasNewPassword);
         }
         
         // If Mojang auth succeeded, proceed with normal premium flow
@@ -260,11 +262,14 @@ public abstract class ServerLoginMixin {
                         String serverPasswordHash = TrueauthRuntime.NAME_REGISTRY.getPassword(name);
                         if (serverPasswordHash != null && serverPasswordHash.equals(clientPasswordHash)) {
                             // Password matches, allow access
-                            TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(name, this.authenticatedProfile.getId(), ip, clientPasswordHash);
-                            if (TrueauthConfig.debug()) {
-                                System.out.println("[TrueAuth] password auth succeeded, player: " + name + ", ip: " + ip);
+                            if (hasNewPassword && clientNewPasswordHash != null && !clientNewPasswordHash.isEmpty()) {
+                                TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(name, this.authenticatedProfile.getId(), ip, clientNewPasswordHash);
+                                if (TrueauthConfig.debug()) {
+                                    System.out.println("[TrueAuth] password changed for player: " + name);
+                                }
                             }
                             AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
+                            AuthState.markAuthSuccess(this.connection, TrueauthRuntime.NAME_REGISTRY.getPassword(name));
                             clearFabricApiQueryChannel(this.trueauth$txId);
                             reset(); ci.cancel(); return;
                         } else {
@@ -284,6 +289,7 @@ public abstract class ServerLoginMixin {
                             System.out.println("[TrueAuth] new player registered, player: " + name + ", ip: " + ip);
                         }
                         AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
+                        AuthState.markAuthSuccess(this.connection, clientPasswordHash);
                         clearFabricApiQueryChannel(this.trueauth$txId);
                         reset(); ci.cancel(); return;
                     }

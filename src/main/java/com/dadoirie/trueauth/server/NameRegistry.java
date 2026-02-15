@@ -120,9 +120,8 @@ public class NameRegistry {
                 if (me.getValue().premium) {
                     e.addProperty("firstVerifiedAt", me.getValue().firstVerifiedAt);
                     e.addProperty("lastVerifiedAt", me.getValue().lastVerifiedAt);
-                    if (me.getValue().lastSuccessIp != null)
-                        e.addProperty("lastSuccessIp", me.getValue().lastSuccessIp);
                 }
+                e.addProperty("lastSuccessIp", me.getValue().lastSuccessIp);
                 o.add(me.getKey(), e);
             }
             try (Writer w = Files.newBufferedWriter(file, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {

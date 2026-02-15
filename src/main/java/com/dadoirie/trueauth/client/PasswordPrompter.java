@@ -6,25 +6,22 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.User;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.EditServerScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
-import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
+import net.minecraft.client.gui.screens.multiplayer.SafetyScreen;
 
+import com.dadoirie.trueauth.config.TrueauthConfig;
+
+/**
+ * Event handler that automatically prompts for password when needed.
+ * 
+ * Only handles the automatic prompt case (user has no password).
+ * Manual password changes should call PasswordScreen directly.
+ */
 @OnlyIn(Dist.CLIENT)
-public final class PasswordPrompter extends Screen {
+public final class PasswordPrompter {
     private static PasswordPrompter instance;
-    private Screen parentScreen;
-    private PasswordField passwordField;
-    private PasswordField confirmPasswordField;
-    private Button okButton;
-    private Button toggleObfuscationButton;
-    private boolean obfuscated = true;
-    private String errorMessage = "";
     
     public static PasswordPrompter getInstance() {
         if (instance == null) {
@@ -37,226 +34,67 @@ public final class PasswordPrompter extends Screen {
         NeoForge.EVENT_BUS.register(getInstance());
     }
     
-    private PasswordPrompter() {
-        super(Component.literal("Password Required"));
-    }
-    
-    public void setParentScreen(Screen parent) {
-        this.parentScreen = parent;
-    }
+    private PasswordPrompter() {}
     
     @SubscribeEvent
     public void onScreenOpen(ScreenEvent.Opening event) {
+        String screenClassName = event.getScreen().getClass().getName();
+        
+        if (screenClassName.equals("me.axieum.mcmod.authme.api.gui.screen.AuthMethodScreen") ||
+            screenClassName.equals("me.axieum.mcmod.authme.api.gui.screen.MicrosoftAuthScreen") ||
+            screenClassName.equals("me.axieum.mcmod.authme.api.gui.screen.OfflineAuthScreen")) {
+            System.out.println("[TrueAuth] AuthMe screen detected: " + event.getScreen().getClass().getSimpleName() + " - isPremium: " + ProfileTypeState.isPremium());
+        }
+        
+        if (event.getScreen() instanceof EditServerScreen) {
+            System.out.println("[TrueAuth] EditServerScreen detected - isPremium: " + ProfileTypeState.isPremium());
+        }
+
         if (!(event.getScreen() instanceof JoinMultiplayerScreen)) return;
         
-        if (isPremiumPlayer()) return;
-        
-        // Only show the password screen if the password file doesn't exist
-        if (!PasswordStorage.passwordExists()) {
-            clearFields();
-            setParentScreen(event.getScreen());
-            event.setNewScreen(this);
-        }
-    }
-    
-    private static boolean isPremiumPlayer() {
-        Minecraft mc = Minecraft.getInstance();
-        User user = mc.getUser();
-        String token = user.getAccessToken();
-        
-        if (token == null || token.isEmpty()) {
-            return false;
+        if (TrueauthConfig.debug()) {
+            System.out.println("[TrueAuth] JoinMultiplayerScreen opening");
+            System.out.println("[TrueAuth] getCurrentScreen: " + (event.getCurrentScreen() != null ? event.getCurrentScreen().getClass().getSimpleName() : "null"));
         }
         
-        try {
-            var profile = user.getProfileId();
-            String serverId = java.util.UUID.randomUUID().toString();
-            mc.getMinecraftSessionService().joinServer(profile, token, serverId);
-            var result = mc.getMinecraftSessionService().hasJoinedServer(user.getName(), serverId, null);
-            return result != null;
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-    
-    @Override
-    protected void init() {
-        super.init();
+        String lastScreenClass = event.getCurrentScreen() != null ? event.getCurrentScreen().getClass().getName() : "";
+        boolean isAuthMeScreen = lastScreenClass.equals("me.axieum.mcmod.authme.api.gui.screen.AuthMethodScreen") ||
+                                  lastScreenClass.equals("me.axieum.mcmod.authme.api.gui.screen.MicrosoftAuthScreen") ||
+                                  lastScreenClass.equals("me.axieum.mcmod.authme.api.gui.screen.OfflineAuthScreen");
         
-        // Password field
-        this.passwordField = new PasswordField(
-            this.font,
-            this.width / 2 - 100,
-            this.height / 2 - 40,
-            200,
-            20,
-            Component.literal("Password")
-        );
-        this.passwordField.setMaxLength(32);
-        this.addRenderableWidget(this.passwordField);
-        
-        // Confirm password field
-        this.confirmPasswordField = new PasswordField(
-            this.font,
-            this.width / 2 - 100,
-            this.height / 2 + 10,
-            200,
-            20,
-            Component.literal("Confirm Password")
-        );
-        this.confirmPasswordField.setMaxLength(32);
-        this.addRenderableWidget(this.confirmPasswordField);
-        
-        // OK button
-        this.okButton = Button.builder(
-            Component.literal("OK"),
-            button -> this.onOkPressed()
-        ).bounds(
-            this.width / 2 - 50,
-            this.height / 2 + 40,
-            100,
-            20
-        ).build();
-        this.addRenderableWidget(this.okButton);
-        
-        // Toggle obfuscation button (eye icon)
-        this.toggleObfuscationButton = Button.builder(
-            Component.literal(this.obfuscated ? "§a👁" : "§c👁"),
-            button -> this.toggleObfuscation()
-        ).bounds(
-            this.width / 2 + 100 - 20, // Right-aligned with the input fields
-            this.height / 2 + 40,
-            20,
-            20
-        ).build(b -> new Button(b) {
-            @Override
-            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-                super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
-                
-                // Show tooltip when hovered
-                if (this.isHovered) {
-                    guiGraphics.renderTooltip(
-                        font,
-                        Component.literal(obfuscated ? "Show Password" : "Hide Password"),
-                        mouseX,
-                        mouseY
-                    );
-                }
+        if (event.getCurrentScreen() instanceof SafetyScreen || 
+            event.getCurrentScreen() instanceof TitleScreen || 
+            isAuthMeScreen) {
+            ProfileTypeState.evaluate();
+        } else {
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] NO MATCH - was not title/safety/authme screen - not evaluated");
             }
-        });
-        this.addRenderableWidget(this.toggleObfuscationButton);
-    }
-    
-    @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-        
-        // Draw title
-        guiGraphics.drawCenteredString(
-            this.font,
-            this.title,
-            this.width / 2,
-            this.height / 2 - 80,
-            0xFFFFFF
-        );
-        
-        // Draw password field label
-        guiGraphics.drawString(
-            this.font,
-            "Enter password:",
-            this.width / 2 - 100,
-            this.height / 2 - 55,
-            0xA0A0A0
-        );
-        
-        // Draw confirm password field label
-        guiGraphics.drawString(
-            this.font,
-            "Confirm password:",
-            this.width / 2 - 100,
-            this.height / 2 - 5,
-            0xA0A0A0
-        );
-        
-        // Draw error message if any
-        if (!this.errorMessage.isEmpty()) {
-            guiGraphics.drawString(
-                this.font,
-                this.errorMessage,
-                this.width / 2 - 100,
-                this.height / 2 - 70,
-                0xFF0000
-            );
         }
-    }
-    
-    private void toggleObfuscation() {
-        this.obfuscated = !this.obfuscated;
-        this.passwordField.setObfuscated(this.obfuscated);
-        this.confirmPasswordField.setObfuscated(this.obfuscated);
-        this.toggleObfuscationButton.setMessage(Component.literal(this.obfuscated ? "§a👁" : "§c👁"));
-    }
-    
-    private void clearFields() {
-        if (this.passwordField != null) {
-            this.passwordField.setValue("");
-        }
-        if (this.confirmPasswordField != null) {
-            this.confirmPasswordField.setValue("");
-        }
-        this.errorMessage = "";
-    }
-    
-    private void onOkPressed() {
-        String password = this.passwordField.getValue();
-        String confirmPassword = this.confirmPasswordField.getValue();
         
-        // Check if passwords are empty
-        if (password.isEmpty() || confirmPassword.isEmpty()) {
-            this.errorMessage = "Password cannot be empty!";
+        if (ProfileTypeState.isPremium()) return;
+        
+        String currentUser = Minecraft.getInstance().getUser().getName();
+        
+        // Check if user exists in storage - if not, prompt for initial setup
+        if (!PasswordStorage.userExists(currentUser)) {
+            // ! CRITICAL - not for release builds - Debug: print entire password storage
+            System.out.println("[TrueAuth] === PASSWORD PROMPTER - AUTO PROMPT ===");
+            PasswordStorage.debugPrintAll();
+            
+            event.setNewScreen(PasswordScreen.getInstance());
+            PasswordScreen.getInstance().openForInitialSetup(currentUser);
             return;
         }
         
-        // Check minimum password length
-        if (password.length() < 6) {
-            this.errorMessage = "Password must be at least 6 characters!";
-            return;
+        String userPassword = PasswordStorage.getUserPassword(currentUser);
+        if (!userPassword.isEmpty() && !UserPasswordVerifyScreen.isVerified(currentUser)) {
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] User has userPassword set - showing verify screen");
+            }
+            
+            event.setNewScreen(UserPasswordVerifyScreen.getInstance());
+            UserPasswordVerifyScreen.getInstance().open(currentUser, (JoinMultiplayerScreen) event.getScreen());
         }
-        
-        // Check if passwords match
-        if (!password.equals(confirmPassword)) {
-            this.errorMessage = "Passwords do not match!";
-            return;
-        }
-        
-        // Save the password
-        PasswordStorage.savePassword(password);
-        
-        // Clear error message if passwords match
-        this.errorMessage = "";
-        
-        // Close the screen
-        this.minecraft.setScreen(this.parentScreen);
-    }
-    
-    @Override
-    public void onClose() {
-        this.minecraft.setScreen(this.parentScreen);
-    }
-    
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Enter key: trigger OK action
-        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-            this.onOkPressed();
-            return true;
-        }
-        // ESC key: go to main menu (TitleScreen)
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            this.minecraft.setScreen(new TitleScreen());
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 }

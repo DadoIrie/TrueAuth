@@ -15,6 +15,7 @@ base {
 
 repositories {
     mavenCentral()
+    maven { url 'https://api.modrinth.com/maven' }
 }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
@@ -51,6 +52,14 @@ neoForge {
     }
 }
 sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    compileOnlyApi("maven.modrinth:auth-me:NinhKHNO")
+}
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
     var replaceProperties = [

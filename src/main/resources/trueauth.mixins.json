@@ -3,6 +3,7 @@
   "priority": 900,
   "minVersion": "0.8",
   "package": "com.dadoirie.trueauth.mixin",
+  "plugin": "com.dadoirie.trueauth.mixin.ConditionalMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "refmap": "trueauth.refmap.json",
   "mixins": [
@@ -12,7 +13,9 @@
     "server.WhitelistCommandMixin"
   ],
   "client": [
-    "client.ClientHandshakeMixin"
+    "client.ClientHandshakeMixin",
+    "client.ConnectScreenMixin",
+    "client.AuthMethodScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

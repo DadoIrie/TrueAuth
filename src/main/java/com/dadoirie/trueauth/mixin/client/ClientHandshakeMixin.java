@@ -1,6 +1,8 @@
 package com.dadoirie.trueauth.mixin.client;
 
 import com.dadoirie.trueauth.client.PasswordStorage;
+import com.dadoirie.trueauth.client.ServerAddressStorage;
+import com.dadoirie.trueauth.config.TrueauthConfig;
 import com.dadoirie.trueauth.net.AuthAnswerPayload;
 import com.dadoirie.trueauth.net.AuthPayload;
 import com.dadoirie.trueauth.net.NetIds;
@@ -41,11 +43,46 @@ public abstract class ClientHandshakeMixin {
             ok = false;
         }
         
-        // Check if we have a stored password
-        String passwordHash = PasswordStorage.loadPassword();
-        boolean hasPassword = !passwordHash.isEmpty();
+        // Get the current server hostname
+        String serverHostname = ServerAddressStorage.get("current");
         
-        AuthAnswerPayload answer = new AuthAnswerPayload(ok, hasPassword, hasPassword ? passwordHash : null);
+        // ! CRITICAL - remove or comment out for release builds - Debug: print entire password storage before handshake
+        if (TrueauthConfig.debug()) {
+            System.out.println("[TrueAuth] === BEFORE HANDSHKE ===");
+            System.out.println("[TrueAuth] Server: " + serverHostname);
+            PasswordStorage.debugPrintAll();
+        }
+        
+        // Get current username for password lookup
+        String username = Minecraft.getInstance().getUser().getName();
+        
+        // Check if we have a server-specific password
+        String passwordHash;
+        String newPasswordHash = null;
+        
+        if (serverHostname != null && PasswordStorage.hasServerEntry(username, serverHostname)) {
+            // Server exists in storage - use server-specific password
+            passwordHash = PasswordStorage.getPasswordForServer(username, serverHostname);
+            newPasswordHash = PasswordStorage.getNewPasswordForServer(username, serverHostname);
+        } else {
+            // New server - use default password
+            passwordHash = PasswordStorage.getServerPassword(username);
+        }
+        
+        boolean hasPassword = passwordHash != null && !passwordHash.isEmpty();
+        
+        AuthAnswerPayload answer;
+        if (hasPassword && newPasswordHash != null && !newPasswordHash.isEmpty()) {
+            // Has both password and newPassword
+            answer = new AuthAnswerPayload(ok, passwordHash, newPasswordHash);
+        } else if (hasPassword) {
+            // Has only password
+            answer = new AuthAnswerPayload(ok, passwordHash);
+        } else {
+            // No password
+            answer = new AuthAnswerPayload(ok);
+        }
+        
         this.connection.send(new ServerboundCustomQueryAnswerPacket(packet.transactionId(), answer));
         ci.cancel();
     }
