@@ -17,6 +17,7 @@ public abstract class ClientboundCustomQueryMixin {
     private static void trueauth$decodeAuth(ResourceLocation id,
                                             FriendlyByteBuf buf,
                                             CallbackInfoReturnable<CustomQueryPayload> cir) {
+        if (true) return; // ! SILENCED - Fabric API handles this with PacketByteBufLoginQueryRequestPayload
         if (NetIds.AUTH.equals(id)) {
             cir.setReturnValue(new AuthPayload(buf));
         }

@@ -21,8 +21,6 @@ Note: Client and server must both install this mod. The server must run in offli
 ## New features and policies
 
 - Name Registry: Persistently records names that have successfully verified as premium (name -> premium UUID).
-- Policy: knownPremiumDenyOffline
-    - Once a name has verified as premium, future auth failures will deny offline fallback for that name (to prevent data divergence).
 - Policy: allowOfflineForUnknownOnly
     - Only allow offline fallback for names that have never verified as premium.
 - Recent IP Grace (optional)
@@ -78,8 +76,6 @@ Keys and defaults:
     - Short subtitle for Title when in offline mode.
 - auth.onlineShortSubtitle = "已通过正版校验"
     - Short subtitle for Title when in premium mode.
-- auth.knownPremiumDenyOffline = true
-    - If a name has ever verified as premium, deny offline fallback on later failures (prevents data splitting).
 - auth.allowOfflineForUnknownOnly = true
     - Only names that have never verified as premium may fall back to offline.
 - auth.recentIpGrace.enabled = true

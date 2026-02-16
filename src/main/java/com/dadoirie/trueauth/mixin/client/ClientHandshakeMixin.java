@@ -25,6 +25,7 @@ public abstract class ClientHandshakeMixin {
 
     @Inject(method = "handleCustomQuery", at = @At("HEAD"), cancellable = true)
     private void trueauth$onCustomQuery(ClientboundCustomQueryPacket packet, CallbackInfo ci) {
+        if (true) return; // ! SILENCED - Fabric API handles this
         CustomQueryPayload payload = packet.payload();
         if (!NetIds.AUTH.equals(payload.id())) return;
         if(!(payload instanceof AuthPayload(String serverId))) return;

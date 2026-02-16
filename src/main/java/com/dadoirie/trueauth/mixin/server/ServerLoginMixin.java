@@ -52,6 +52,7 @@ public abstract class ServerLoginMixin {
 
     @Inject(method = "handleHello", at = @At("TAIL"))
     private void trueauth$afterHello(ServerboundHelloPacket pkt, CallbackInfo ci) {
+        if (true) return; // ! CRITICAL RETURN
         if (this.server.usesAuthentication() || this.authenticatedProfile == null) return;
 
         // 若开启 nomojang，则直接使用本地策略，不向客户端发送会话认证包
@@ -114,6 +115,7 @@ public abstract class ServerLoginMixin {
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void trueauth$onTick(CallbackInfo ci) {
+        if (true) return; // ! CRITICAL RETURN
         if (this.trueauth$txId == 0 || this.trueauth$sentAt == 0L) return;
         
         // Check if ForgifiedFabricAPI is present and handle accordingly
@@ -173,6 +175,7 @@ public abstract class ServerLoginMixin {
 
     @Inject(method = "handleCustomQueryPacket", at = @At("HEAD"), cancellable = true)
     private void trueauth$onLoginCustom(ServerboundCustomQueryAnswerPacket packet, CallbackInfo ci) {
+        if (true) return; // ! CRITICAL RETURN
         if (this.trueauth$txId == 0) return;
         if (packet.transactionId() != this.trueauth$txId) return;
 
@@ -245,7 +248,7 @@ public abstract class ServerLoginMixin {
                 String name = this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>";
                 
                 // Check if known premium name should be denied offline access (before any password logic)
-                if (TrueauthConfig.knownPremiumDenyOffline() && TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
+                if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
                     String msg = "This name is bound to a premium UUID.";
                     if (TrueauthConfig.debug()) {
                         System.out.println("[TrueAuth] denying offline entry for known premium name: " + name);

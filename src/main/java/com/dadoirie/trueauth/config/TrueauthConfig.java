@@ -37,7 +37,6 @@ public final class TrueauthConfig {
     public static String onlineTitle() { return COMMON.onlineTitle.get(); }
 
     // 新增：策略相关
-    public static boolean knownPremiumDenyOffline() { return COMMON.knownPremiumDenyOffline.get(); }
     public static boolean allowOfflineForUnknownOnly() { return COMMON.allowOfflineForUnknownOnly.get(); }
     public static boolean recentIpGraceEnabled() { return COMMON.recentIpGraceEnabled.get(); }
     public static int recentIpGraceTtlSeconds() { return COMMON.recentIpGraceTtlSeconds.get(); }
@@ -68,7 +67,6 @@ public final class TrueauthConfig {
         public final ModConfigSpec.ConfigValue<String> mojangReverseProxy;
 
         // 新增：策略相关
-        public final ModConfigSpec.BooleanValue knownPremiumDenyOffline;
         public final ModConfigSpec.BooleanValue allowOfflineForUnknownOnly;
         public final ModConfigSpec.BooleanValue recentIpGraceEnabled;
         public final ModConfigSpec.IntValue recentIpGraceTtlSeconds;
@@ -97,8 +95,6 @@ public final class TrueauthConfig {
             onlineTitle  = b.define("onlineTitle",  "Premium Mode");
 
             // Policy options
-            knownPremiumDenyOffline   = b.comment("Once a name has been verified as premium, deny offline entry on subsequent auth failures.")
-                    .define("knownPremiumDenyOffline", true);
             allowOfflineForUnknownOnly = b.comment("Only allow offline fallback for names that have never been verified as premium.")
                     .define("allowOfflineForUnknownOnly", true);
             recentIpGraceEnabled      = b.comment("Enable 'recent same IP success' grace period, temporarily treat as premium on failure within TTL.")

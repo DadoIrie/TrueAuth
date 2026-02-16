@@ -124,9 +124,6 @@ public class TrueauthCommands {
             v = getVal.apply("auth.recentIpGrace.enabled", "recentIpGrace.enabled");
             if (v instanceof Boolean) TrueauthConfig.COMMON.recentIpGraceEnabled.set((Boolean) v);
 
-            v = getVal.apply("auth.knownPremiumDenyOffline", "knownPremiumDenyOffline");
-            if (v instanceof Boolean) TrueauthConfig.COMMON.knownPremiumDenyOffline.set((Boolean) v);
-
             v = getVal.apply("auth.allowOfflineForUnknownOnly", "allowOfflineForUnknownOnly");
             if (v instanceof Boolean) TrueauthConfig.COMMON.allowOfflineForUnknownOnly.set((Boolean) v);
 

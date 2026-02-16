@@ -247,12 +247,27 @@ public class PasswordStorage {
         }
     }
     
-    // ! WARNING: Remove or comment this method before release build!
+    // ! CRITICAL - Remove or comment this method before release build!
     // ! This is for debugging only - prints the entire NBT structure unobfuscated
     public static void debugPrintAll() {
         CompoundTag root = loadOrCreate();
-        System.out.println("[TrueAuth DEBUG] Password storage contents:");
-        System.out.println(root.toString());
+        System.out.println("[TrueAuth DEBUG] === Password Storage Contents ===");
+        CompoundTag users = root.getCompound("users");
+        for (String username : users.getAllKeys()) {
+            System.out.println("[TrueAuth DEBUG] User: " + username);
+            CompoundTag userData = users.getCompound(username);
+            System.out.println("[TrueAuth DEBUG]   serverPassword: " + userData.getString("serverPassword"));
+            System.out.println("[TrueAuth DEBUG]   userPassword: " + userData.getString("userPassword"));
+            CompoundTag servers = userData.getCompound("servers");
+            System.out.println("[TrueAuth DEBUG]   servers:");
+            for (String hostname : servers.getAllKeys()) {
+                System.out.println("[TrueAuth DEBUG]     " + hostname + ":");
+                CompoundTag serverData = servers.getCompound(hostname);
+                System.out.println("[TrueAuth DEBUG]       password: " + serverData.getString("password"));
+                System.out.println("[TrueAuth DEBUG]       newPassword: " + serverData.getString("newPassword"));
+            }
+        }
+        System.out.println("[TrueAuth DEBUG] === End Password Storage ===");
     }
     
     // === Internal methods ===

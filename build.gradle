@@ -16,6 +16,7 @@ base {
 repositories {
     mavenCentral()
     maven { url 'https://api.modrinth.com/maven' }
+    maven { url 'https://maven.su5ed.dev/releases' }
 }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
@@ -59,6 +60,9 @@ configurations {
 
 dependencies {
     compileOnlyApi("maven.modrinth:auth-me:NinhKHNO")
+    // ForgifiedFabricAPI - hard dependency (user must have it installed)
+    implementation("org.sinytra.forgified-fabric-api:fabric-api-base:0.4.42+d1308ded19")
+    implementation("org.sinytra.forgified-fabric-api:fabric-networking-api-v1:4.3.0+ab6ec1d119")
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {

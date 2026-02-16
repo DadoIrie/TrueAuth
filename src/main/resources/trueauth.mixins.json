@@ -8,6 +8,7 @@
   "refmap": "trueauth.refmap.json",
   "mixins": [
     "client.ClientboundCustomQueryMixin",
+    "server.ServerLoginAccessor",
     "server.ServerboundCustomQueryAnswerMixin",
     "server.ServerLoginMixin",
     "server.WhitelistCommandMixin"
