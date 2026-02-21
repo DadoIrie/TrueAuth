@@ -12,7 +12,7 @@ public class TrueauthClient {
     
     private static boolean isFabricApiPresent() {
         return LoadingModList.get() != null && 
-            LoadingModList.get().getModFileById("fabric_networking_api_v1") != null;
+            LoadingModList.get().getModFileById("fabric_networking_api_v1-disabled") != null;
     }
     
     public TrueauthClient(IEventBus modBus) {

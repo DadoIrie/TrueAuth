@@ -60,7 +60,7 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
      */
     public static boolean isFabricApiPresent() {
         if (ffapiPresent == null) {
-            ffapiPresent = isModLoaded("fabric_networking_api_v1");
+            ffapiPresent = isModLoaded("fabric_networking_api_v1-disabled");
             if (ffapiPresent) {
                 LOGGER.info("[TrueAuth] ForgifiedFabricAPI detected - using Fabric API networking");
             }

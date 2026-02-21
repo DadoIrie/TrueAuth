@@ -60,9 +60,9 @@ public abstract class ServerLoginMixin {
                 System.out.println("[TrueAuth] nomojang mode: skipping Mojang session auth, player: " + (name != null ? name : "<unknown>") + ", ip: " + ip);
             }
             
-            GameProfile premiumProfile = AuthProcessor.handleNomojangGrace(name, ip);
-            if (premiumProfile != null) {
-                this.authenticatedProfile = premiumProfile;
+            if (AuthProcessor.checkNomojangGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
+                this.authenticatedProfile = AuthProcessor.restoreUuid(name);
+                // trueauth$startClientVerification(this.authenticatedProfile);
                 return;
             }
         }
@@ -177,55 +177,7 @@ public abstract class ServerLoginMixin {
             }
             // Continue with normal Mojang auth flow below...
         } else {
-            if (!clientPasswordHash.isEmpty()) {
-                // Check if player already has a stored password
-                if (TrueauthRuntime.NAME_REGISTRY.isRegistered(playerName) && !TrueauthRuntime.NAME_REGISTRY.isPremium(playerName)) {
-                    // Existing player - verify password
-                    String serverPasswordHash = TrueauthRuntime.NAME_REGISTRY.getPassword(playerName);
-                    if (serverPasswordHash.equals(clientPasswordHash)) {
-                        // Password matches, allow access
-                        boolean passwordChanged = clientNewPasswordHash != null && !clientNewPasswordHash.isEmpty();
-                        String passwordToSend = passwordChanged ? clientNewPasswordHash : serverPasswordHash;
-                        if (passwordChanged && TrueauthConfig.debug()) System.out.println("[TrueAuth] password change requested for player: " + playerName);
-                        // Store pending password hash - will be saved after client confirms
-                        this.trueauth$pendingPasswordHash = passwordToSend;
-                        // Send AuthResultPayload to client with password hash and passwordChanged flag
-                        this.trueauth$resultTxId = TRUEUUID$NEXT_TX_ID.getAndIncrement();
-                        AuthQueryTracker.markResult(this.trueauth$resultTxId);
-                        AuthResultPayload resultPayload = new AuthResultPayload(passwordToSend, passwordChanged);
-                        this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$resultTxId, resultPayload));
-                        ci.cancel(); return;
-                    } else {
-                        // Password doesn't match
-                        String msg = "Incorrect password! If this is a mistake, contact the server administrator.";
-                        if (TrueauthConfig.debug()) {
-                            System.out.println("[TrueAuth] password auth failed, player: " + playerName + ", ip: " + ip + ", message: " + msg);
-                        }
-                        AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
-                        reset(); ci.cancel(); return;
-                    }
-                } else {
-                    // New player - store pending password hash, will be saved after client confirms
-                    this.trueauth$pendingPasswordHash = clientPasswordHash;
-                    if (TrueauthConfig.debug()) {
-                        System.out.println("[TrueAuth] new player pending registration: " + playerName + ", ip: " + ip);
-                    }
-                    // Send AuthResultPayload to client with password hash (passwordChanged=false for new players)
-                    this.trueauth$resultTxId = TRUEUUID$NEXT_TX_ID.getAndIncrement();
-                    AuthQueryTracker.markResult(this.trueauth$resultTxId);
-                    AuthResultPayload resultPayload = new AuthResultPayload(clientPasswordHash, false);
-                    this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$resultTxId, resultPayload));
-                    ci.cancel(); return;
-                }
-            } else {
-                // No password provided - technical error
-                String msg = "Password retrieval failed. Please restart your game and try again.";
-                if (TrueauthConfig.debug()) {
-                    System.out.println("[TrueAuth] no password provided, player: " + playerName + ", ip: " + ip);
-                }
-                AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
-                reset(); ci.cancel(); return;
-            }
+            if (passwordVerification(playerName, clientPasswordHash, clientNewPasswordHash, ip, ci)) return;
         }
 
         // Idempotency protection: if already handled this handshake's ack, ignore duplicate packet
@@ -338,6 +290,57 @@ public abstract class ServerLoginMixin {
                 AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
             }
         }
+    }
+    
+    @Unique
+    private boolean passwordVerification(String playerName, String clientPasswordHash, String clientNewPasswordHash, String ip, CallbackInfo ci) {
+        AuthProcessor.PasswordVerifyResult result = AuthProcessor.verifyPassword(playerName, clientPasswordHash, clientNewPasswordHash);
+        
+        switch (result.outcome()) {
+            case MATCH -> {
+                if (result.passwordChanged() && TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] password change requested for player: " + playerName);
+                }
+                this.trueauth$pendingPasswordHash = result.passwordToStore();
+                this.trueauth$resultTxId = TRUEUUID$NEXT_TX_ID.getAndIncrement();
+                AuthQueryTracker.markResult(this.trueauth$resultTxId);
+                this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$resultTxId, 
+                    new AuthResultPayload(result.passwordToStore(), result.passwordChanged())));
+                ci.cancel();
+                return true;
+            }
+            case MISMATCH -> {
+                String msg = "Incorrect password! If this is a mistake, contact the server administrator.";
+                if (TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] password auth failed, player: " + playerName + ", ip: " + ip);
+                }
+                AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
+                reset(); ci.cancel();
+                return false;
+            }
+            case NEW_PLAYER -> {
+                this.trueauth$pendingPasswordHash = result.passwordToStore();
+                if (TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] new player pending registration: " + playerName + ", ip: " + ip);
+                }
+                this.trueauth$resultTxId = TRUEUUID$NEXT_TX_ID.getAndIncrement();
+                AuthQueryTracker.markResult(this.trueauth$resultTxId);
+                this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$resultTxId, 
+                    new AuthResultPayload(result.passwordToStore(), false)));
+                ci.cancel();
+                return false;
+            }
+            case NO_PASSWORD -> {
+                String msg = "Password retrieval failed. Please restart your game and try again.";
+                if (TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] no password provided, player: " + playerName + ", ip: " + ip);
+                }
+                AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
+                reset(); ci.cancel();
+                return false;
+            }
+        }
+        return false;
     }
 
     @Unique

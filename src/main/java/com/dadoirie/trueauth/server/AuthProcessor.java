@@ -19,6 +19,68 @@ public final class AuthProcessor {
     private AuthProcessor() {}
     
     /**
+     * Result of password verification.
+     */
+    public record PasswordVerifyResult(
+        Outcome outcome,
+        String passwordToStore,
+        boolean passwordChanged
+    ) {
+        public enum Outcome {
+            MATCH,
+            MISMATCH,
+            NEW_PLAYER,
+            NO_PASSWORD
+        }
+        
+        public static PasswordVerifyResult match(String passwordToStore, boolean passwordChanged) {
+            return new PasswordVerifyResult(Outcome.MATCH, passwordToStore, passwordChanged);
+        }
+        
+        public static PasswordVerifyResult mismatch() {
+            return new PasswordVerifyResult(Outcome.MISMATCH, null, false);
+        }
+        
+        public static PasswordVerifyResult newPlayer(String passwordHash) {
+            return new PasswordVerifyResult(Outcome.NEW_PLAYER, passwordHash, false);
+        }
+        
+        public static PasswordVerifyResult noPassword() {
+            return new PasswordVerifyResult(Outcome.NO_PASSWORD, null, false);
+        }
+    }
+    
+    /**
+     * Verifies password for offline players and premium fallback scenarios.
+     * 
+     * @param playerName The player name to verify
+     * @param clientPasswordHash The password hash from client
+     * @param clientNewPasswordHash The new password hash if changing password
+     * @return PasswordVerifyResult with outcome and data for caller to handle
+     */
+    public static PasswordVerifyResult verifyPassword(
+            String playerName,
+            String clientPasswordHash,
+            String clientNewPasswordHash
+    ) {
+        if (clientPasswordHash == null || clientPasswordHash.isEmpty()) {
+            return PasswordVerifyResult.noPassword();
+        }
+        
+        if (TrueauthRuntime.NAME_REGISTRY.isRegistered(playerName)) {
+            String serverPasswordHash = TrueauthRuntime.NAME_REGISTRY.getPassword(playerName);
+            if (serverPasswordHash != null && serverPasswordHash.equals(clientPasswordHash)) {
+                boolean passwordChanged = clientNewPasswordHash != null && !clientNewPasswordHash.isEmpty();
+                String passwordToStore = passwordChanged ? clientNewPasswordHash : serverPasswordHash;
+                return PasswordVerifyResult.match(passwordToStore, passwordChanged);
+            }
+            return PasswordVerifyResult.mismatch();
+        }
+        
+        return PasswordVerifyResult.newPlayer(clientPasswordHash);
+    }
+    
+    /**
      * Extracts the IP address from a connection's remote address.
      *
      * @param connection The network connection
@@ -137,43 +199,47 @@ public final class AuthProcessor {
     }
     
     /**
-     * Handles nomojang IP grace check.
-     * If recent IP grace finds a premium record, treats player as premium.
-     * Records in registries and returns a GameProfile with cached skin properties.
+     * Checks if nomojang IP grace applies for the player.
      *
      * @param playerName The player name
      * @param ip The player IP address
-     * @return A GameProfile with premium UUID and cached skin if found, null otherwise
+     * @return true if IP grace found a premium record, false otherwise
      */
-    public static GameProfile handleNomojangGrace(String playerName, String ip) {
-        if (TrueauthConfig.recentIpGraceEnabled() && ip != null) {
-            var pOpt = TrueauthRuntime.IP_GRACE.tryGrace(playerName, ip, TrueauthConfig.recentIpGraceTtlSeconds());
-            if (pOpt.isPresent()) {
-                UUID premium = pOpt.get();
-                if (premium != null) {
-                    if (TrueauthConfig.debug()) {
-                        System.out.println("[TrueAuth] nomojang: found same IP premium record, treating as premium, uuid=" + premium);
-                    }
-                    TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(playerName, premium, ip, "");
-                    TrueauthRuntime.IP_GRACE.record(playerName, ip, premium);
-                    
-                    GameProfile profile = new GameProfile(premium, playerName);
-                    var propMap = profile.getProperties();
-                    propMap.removeAll("textures");
-                    var cachedProps = TrueauthRuntime.SKIN_CACHE.getPropMap(premium);
-                    if (cachedProps != null) {
-                        propMap.putAll(cachedProps);
-                    }
-                    return profile;
-                }
+    public static boolean checkNomojangGrace(String playerName, String ip) {
+        if (!TrueauthConfig.recentIpGraceEnabled() || ip == null) {
+            return false;
+        }
+        
+        var pOpt = TrueauthRuntime.IP_GRACE.tryGrace(playerName, ip, TrueauthConfig.recentIpGraceTtlSeconds());
+        if (pOpt.isPresent() && pOpt.get() != null) {
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] nomojang: found same IP premium record, uuid=" + pOpt.get());
             }
+            return true;
         }
         
         if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] nomojang: no same IP premium record found, allowing offline entry");
+            System.out.println("[TrueAuth] nomojang: no same IP premium record found");
         }
-        
-        return null;
+        return false;
+    }
+    
+    /**
+     * Restores UUID and skin from NameRegistry. (mainly meant for premium players for now)
+     *
+     * @param playerName The player name
+     * @return A GameProfile with restored UUID from name registry and cached skin
+     */
+    public static GameProfile restoreUuid(String playerName) {
+        UUID uuid = TrueauthRuntime.NAME_REGISTRY.getUuid(playerName);
+        GameProfile profile = new GameProfile(uuid, playerName);
+        var propMap = profile.getProperties();
+        propMap.removeAll("textures");
+        var cachedProps = TrueauthRuntime.SKIN_CACHE.getPropMap(uuid);
+        if (cachedProps != null) {
+            propMap.putAll(cachedProps);
+        }
+        return profile;
     }
     
     /**

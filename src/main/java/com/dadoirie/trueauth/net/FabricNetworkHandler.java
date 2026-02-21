@@ -70,12 +70,22 @@ public final class FabricNetworkHandler {
                 System.out.println("[TrueAuth] FFAPI nomojang mode: skipping Mojang session auth, player: " + name + ", ip: " + ip);
             }
             
-            GameProfile premiumProfile = AuthProcessor.handleNomojangGrace(name, ip);
-            if (premiumProfile != null) {
-                CompletableFuture<Void> graceFuture = CompletableFuture.runAsync(() -> {
-                    accessor.trueauth$startClientVerification(premiumProfile);
-                });
-                synchronizer.waitFor(graceFuture);
+            if (AuthProcessor.checkNomojangGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
+                GameProfile premiumProfile = AuthProcessor.restoreUuid(name);
+                
+                if (TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] FFAPI nomojang grace: restored profile for " + name);
+                    System.out.println("[TrueAuth] FFAPI nomojang grace: uuid=" + premiumProfile.getId());
+                    System.out.println("[TrueAuth] FFAPI nomojang grace: properties=" + premiumProfile.getProperties().asMap());
+                }
+                
+                // Match the working hasJoinedAsync pattern - use CompletableFuture.supplyAsync + thenAccept
+                CompletableFuture<Void> premiumFuture = CompletableFuture.supplyAsync(() -> premiumProfile)
+                    .thenAccept(p -> {
+                        accessor.trueauth$setAuthenticatedProfile(p);
+                        accessor.trueauth$startClientVerification(p);
+                    });
+                synchronizer.waitFor(premiumFuture);
                 return;
             }
         }
@@ -210,54 +220,45 @@ public final class FabricNetworkHandler {
             
             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: OFFLINE PLAYER - verifying password for player=" + playerName);
             
-            // Handle password verification directly
-            if (TrueauthRuntime.NAME_REGISTRY.isRegistered(playerName)) {
-                // Existing player - verify password
-                String storedHash = TrueauthRuntime.NAME_REGISTRY.getPassword(playerName);
-                if (storedHash != null && storedHash.equals(passwordHash)) {
-                    // Password matches - determine which password to send
-                    boolean passwordChanged = !newPasswordHash.isEmpty();
-                    
-                    if (passwordChanged && TrueauthConfig.debug()) {
+            AuthProcessor.PasswordVerifyResult result = AuthProcessor.verifyPassword(playerName, passwordHash, newPasswordHash);
+            
+            switch (result.outcome()) {
+                case MATCH -> {
+                    if (result.passwordChanged() && TrueauthConfig.debug()) {
                         System.out.println("[TrueAuth] SERVER: password change requested for player=" + playerName);
                     }
-                    
-                    // Store pending password hash - will be saved after client confirms
-                    PENDING_PASSWORD_MAP.put(handler, passwordChanged ? newPasswordHash : passwordHash);
-                    
-                    // Send AUTH_RESULT to client with password hash and passwordChanged flag
+                    PENDING_PASSWORD_MAP.put(handler, result.passwordToStore());
                     if (responseSender instanceof LoginPacketSender loginSender) {
                         synchronizer.waitFor(server.submit(() -> {
                             FriendlyByteBuf authResult = new FriendlyByteBuf(Unpooled.buffer());
-                            authResult.writeUtf(passwordChanged ? newPasswordHash : passwordHash);
-                            authResult.writeBoolean(passwordChanged);
+                            authResult.writeUtf(result.passwordToStore());
+                            authResult.writeBoolean(result.passwordChanged());
                             loginSender.sendPacket(NetIds.AUTH_RESULT, authResult);
                         }));
                     }
-                    
                     NONCE_MAP.remove(handler);
-                } else {
-                    // Password doesn't match
+                }
+                case MISMATCH -> {
                     AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Incorrect password!"));
                     NONCE_MAP.remove(handler);
                 }
-            } else {
-                // New player - store pending password hash, will be saved after client confirms
-                PENDING_PASSWORD_MAP.put(handler, passwordHash);
-                
-                if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: new player pending registration: " + playerName);
-                
-                // Send AUTH_RESULT to client with password hash (passwordChanged=false for new players)
-                if (responseSender instanceof LoginPacketSender loginSender) {
-                    synchronizer.waitFor(server.submit(() -> {
-                        FriendlyByteBuf authResult = new FriendlyByteBuf(Unpooled.buffer());
-                        authResult.writeUtf(passwordHash);
-                        authResult.writeBoolean(false);
-                        loginSender.sendPacket(NetIds.AUTH_RESULT, authResult);
-                    }));
+                case NEW_PLAYER -> {
+                    PENDING_PASSWORD_MAP.put(handler, result.passwordToStore());
+                    if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: new player pending registration: " + playerName);
+                    if (responseSender instanceof LoginPacketSender loginSender) {
+                        synchronizer.waitFor(server.submit(() -> {
+                            FriendlyByteBuf authResult = new FriendlyByteBuf(Unpooled.buffer());
+                            authResult.writeUtf(result.passwordToStore());
+                            authResult.writeBoolean(false);
+                            loginSender.sendPacket(NetIds.AUTH_RESULT, authResult);
+                        }));
+                    }
+                    NONCE_MAP.remove(handler);
                 }
-                
-                NONCE_MAP.remove(handler);
+                case NO_PASSWORD -> {
+                    AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Password retrieval failed. Please restart your game and try again."));
+                    NONCE_MAP.remove(handler);
+                }
             }
         }
     }
