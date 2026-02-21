@@ -5,18 +5,17 @@ import com.dadoirie.trueauth.config.TrueauthConfig;
 import com.dadoirie.trueauth.net.AuthAnswerPayload;
 import com.dadoirie.trueauth.net.AuthPayload;
 import com.dadoirie.trueauth.net.AuthQueryTracker;
+import com.dadoirie.trueauth.net.AuthResultConfirmPayload;
+import com.dadoirie.trueauth.net.AuthResultPayload;
 import com.dadoirie.trueauth.server.*;
 import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.properties.Property;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.login.ClientboundCustomQueryPacket;
-import net.minecraft.network.protocol.login.ClientboundLoginDisconnectPacket;
 import net.minecraft.network.protocol.login.ServerboundCustomQueryAnswerPacket;
 import net.minecraft.network.protocol.login.ServerboundHelloPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerLoginPacketListenerImpl;
-import net.neoforged.fml.loading.LoadingModList;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -25,10 +24,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.lang.reflect.Method;
-import java.lang.reflect.Field;
-import java.net.InetSocketAddress;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -40,61 +35,37 @@ public abstract class ServerLoginMixin {
 
     @Shadow public abstract void disconnect(Component reason);
 
-    // 握手状态
+    // Handshake state
     @Unique private static final AtomicInteger TRUEUUID$NEXT_TX_ID = new AtomicInteger(1);
     @Unique private int trueauth$txId = 0;
     @Unique private String trueauth$nonce = null;
     @Unique private long trueauth$sentAt = 0L;
+    @Unique private int trueauth$resultTxId = 0;
+    @Unique private String trueauth$pendingPasswordHash = null;
 
 
-    // 新增：防止重复处理客户端认证包（同次握手只处理一次）
+    // Added: prevent duplicate processing of client authentication packets (handle only once per handshake)
     @Unique private volatile boolean trueauth$ackHandled = false;
 
     @Inject(method = "handleHello", at = @At("TAIL"))
     private void trueauth$afterHello(ServerboundHelloPacket pkt, CallbackInfo ci) {
-        if (true) return; // ! CRITICAL RETURN
+        if (!this.server.isDedicatedServer()) return;
         if (this.server.usesAuthentication() || this.authenticatedProfile == null) return;
 
-        // 若开启 nomojang，则直接使用本地策略，不向客户端发送会话认证包
+        // If `nomojang` is enabled, use the local strategy directly and do not send a session authentication packet to the client
         if (TrueauthConfig.nomojangEnabled()) {
             String name = this.authenticatedProfile.getName();
-            String ip;
-            if (this.connection.getRemoteAddress() instanceof InetSocketAddress isa) {
-                ip = isa.getAddress().getHostAddress();
-            } else {
-                ip = null;
-            }
+            String ip = AuthProcessor.getIpAddress(this.connection);
             if (TrueauthConfig.debug()) {
                 System.out.println("[TrueAuth] nomojang mode: skipping Mojang session auth, player: " + (name != null ? name : "<unknown>") + ", ip: " + ip);
             }
-
-            // Try same IP recent grace hit -> treat as premium
-            if (TrueauthConfig.recentIpGraceEnabled() && ip != null) {
-                var pOpt = TrueauthRuntime.IP_GRACE.tryGrace(name, ip, TrueauthConfig.recentIpGraceTtlSeconds());
-                if (pOpt.isPresent()) {
-                    UUID premium = pOpt.get();
-                    if (premium != null) {
-                        if (TrueauthConfig.debug()) {
-                            System.out.println("[TrueAuth] nomojang: found same IP premium record, treating as premium, uuid=" + premium);
-                        }
-                        GameProfile newProfile = new GameProfile(premium, name);
-                        this.authenticatedProfile = newProfile;
-                        // Record success (keep registry/cache consistent)
-                        TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(name, premium, ip);
-                        TrueauthRuntime.IP_GRACE.record(name, ip, premium);
-                        return; // Done, treated as premium
-                    }
-                }
+            
+            GameProfile premiumProfile = AuthProcessor.handleNomojangGrace(name, ip);
+            if (premiumProfile != null) {
+                this.authenticatedProfile = premiumProfile;
+                return;
             }
-
-            // Otherwise: treat as offline (don't block entry)
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] nomojang: no same IP premium record found, allowing offline entry");
-            }
-            // Don't send custom auth packet, keep default offline behavior
-            return;
         }
-
 
         // Clear ack handling flag (new handshake can be processed)
         this.trueauth$ackHandled = false;
@@ -104,39 +75,20 @@ public abstract class ServerLoginMixin {
         this.trueauth$sentAt = System.currentTimeMillis();
 
         if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] handleHello: starting handshake, player: " + (this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>"));
+            System.out.println("[TrueAuth] handleHello: starting handshake, player: " + (this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>") + ", nomojang: " + TrueauthConfig.nomojangEnabled());
             System.out.println("[TrueAuth] handshake nonce: " + this.trueauth$nonce + ", txId: " + this.trueauth$txId);
         }
 
         AuthQueryTracker.mark(this.trueauth$txId);
-        AuthPayload auth = new AuthPayload(this.trueauth$nonce);
+        AuthPayload auth = new AuthPayload(this.trueauth$nonce, TrueauthConfig.nomojangEnabled());
         this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$txId, auth));
     }
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void trueauth$onTick(CallbackInfo ci) {
-        if (true) return; // ! CRITICAL RETURN
+        if (!this.server.isDedicatedServer()) return;
         if (this.trueauth$txId == 0 || this.trueauth$sentAt == 0L) return;
-        
-        // Check if ForgifiedFabricAPI is present and handle accordingly
-        if (isForgifiedFabricAPIPresent()) {
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] ForgifiedFabricAPI detected - allowing tick to continue");
-            }
-            // Don't cancel the tick - let ForgifiedFabricAPI process but check timeout
-            handleTimeoutCheck();
-        } else {
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] ForgifiedFabricAPI not present - blocking tick");
-            }
-            // Original behavior when ForgifiedFabricAPI not present
-            ci.cancel();
-            handleTimeoutCheck();
-        }
-    }
-    
-    @Unique
-    private void handleTimeoutCheck() {
+        ci.cancel(); // Prevent the vanilla tick from advancing the login state
         long timeoutMs = TrueauthConfig.timeoutMs();
         if (timeoutMs <= 0) return;
 
@@ -144,7 +96,7 @@ public abstract class ServerLoginMixin {
         if (now - this.trueauth$sentAt < timeoutMs) return;
 
         if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] handshake timeout, txId: " + this.trueauth$txId);
+            System.out.println("[TrueAuth] handshake timeout (in tick), txId: " + this.trueauth$txId);
         }
 
         if (TrueauthConfig.allowOfflineOnTimeout()) {
@@ -154,86 +106,68 @@ public abstract class ServerLoginMixin {
             AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.TIMEOUT);
             reset();
         } else {
-            Component reason = Component.literal(TrueauthConfig.timeoutKickMessage());
-            sendDisconnectWithReason(reason);
+            String msg = TrueauthConfig.timeoutKickMessage();
+            Component reason = Component.literal(msg != null ? msg : "Login timeout, account verification incomplete");
+            AuthProcessor.sendDisconnectAsync(this.connection, reason);
             reset();
         }
-    }
-    
-    @Unique
-    private static boolean isForgifiedFabricAPIPresent() {
-        return isModLoaded("fabric_networking_api_v1");
-    }
-    
-    @Unique
-    private static boolean isModLoaded(String modId) {
-        if (LoadingModList.get() != null) {
-            return LoadingModList.get().getModFileById(modId) != null;
-        }
-        return false;
     }
 
     @Inject(method = "handleCustomQueryPacket", at = @At("HEAD"), cancellable = true)
     private void trueauth$onLoginCustom(ServerboundCustomQueryAnswerPacket packet, CallbackInfo ci) {
-        if (true) return; // ! CRITICAL RETURN
-        if (this.trueauth$txId == 0) return;
-        if (packet.transactionId() != this.trueauth$txId) return;
-
-        String ip;
-        if (this.connection.getRemoteAddress() instanceof InetSocketAddress isa) {
-            ip = isa.getAddress().getHostAddress();
-        } else {
-            ip = null;
+        if (!this.server.isDedicatedServer()) return;
+        int txId = packet.transactionId();
+        if (txId != this.trueauth$txId && txId != this.trueauth$resultTxId) return;
+        
+        String playerName = this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>";
+        
+        if (txId == this.trueauth$resultTxId && this.trueauth$resultTxId != 0) {
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] received AuthResult confirmation, player: " + playerName);
+            }
+            
+            AuthResultConfirmPayload confirmPayload = (AuthResultConfirmPayload) packet.payload();
+            
+            if (this.trueauth$pendingPasswordHash != null) {
+                AuthProcessor.passwordConfirmationCheck(this.connection, this.authenticatedProfile, this.trueauth$pendingPasswordHash, confirmPayload.passwordHash());
+            }
+            
+            this.trueauth$resultTxId = 0;
+            this.trueauth$pendingPasswordHash = null;
+            reset(); ci.cancel(); return;
         }
+        
+        if (this.trueauth$txId == 0) return;
+
+        String ip = AuthProcessor.getIpAddress(this.connection);
         if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] received client auth packet, player: " + (this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>") + ", ip: " + ip);
+            System.out.println("[TrueAuth] received client auth packet, player: " + playerName + ", ip: " + ip);
         }
 
         AuthAnswerPayload payload = (AuthAnswerPayload) packet.payload();
         if (payload == null) {
             if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] auth failed, player: " + (this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>") + ", ip: " + ip + ", reason: missing data");
+                System.out.println("[TrueAuth] auth failed, player: " + playerName + ", ip: " + ip + ", reason: missing data");
             }
             handleAuthFailure(ip, "missing data");
-            clearFabricApiQueryChannel(this.trueauth$txId);
-            reset(); ci.cancel(); return;
-        }
-
-        // Check whitelist before processing any authentication
-        String playerName = this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>";
-        MinecraftWhitelistChecker whitelistChecker = MinecraftWhitelistChecker.getInstance();
-
-        if (this.server.isDedicatedServer() && TrueauthConfig.whitelistEnabled() && !whitelistChecker.isWhitelisted(playerName)) {
-            String msg = "You are not whitelisted to join this server.";
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] player not in whitelist, player: " + playerName + ", ip: " + ip + ", message: " + msg);
-            }
-            sendDisconnectWithReason(Component.literal(msg));
-            clearFabricApiQueryChannel(this.trueauth$txId);
             reset(); ci.cancel(); return;
         }
 
         boolean ackOk = payload.ok();
-        // Check if online player is trying to use a name already registered as offline
-        if (this.server.isDedicatedServer() && ackOk) {
-            if (TrueauthRuntime.NAME_REGISTRY.isRegistered(playerName) && !TrueauthRuntime.NAME_REGISTRY.isPremium(playerName)) {
-                String msg = "This name is already registered as an offline player.";
-                if (TrueauthConfig.debug()) {
-                    System.out.println("[TrueAuth] online player blocked - name registered as offline, player: " + playerName + ", ip: " + ip);
-                }
-                sendDisconnectWithReason(Component.literal(msg));
-                clearFabricApiQueryChannel(this.trueauth$txId);
-                reset(); ci.cancel(); return;
-            }
+        
+        if (!AuthProcessor.whitelistCheck(this.connection, playerName)) {
+            reset(); ci.cancel(); return;
         }
 
-        boolean hasPassword = payload.hasPassword();
+        if (!AuthProcessor.nameCollisionCheck(this.connection, playerName, ackOk)) {
+            reset(); ci.cancel(); return;
+        }
+
         String clientPasswordHash = payload.passwordHash();
-        boolean hasNewPassword = payload.hasNewPassword();
         String clientNewPasswordHash = payload.newPasswordHash();
         
         if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] client auth packet ackOk: " + ackOk + ", hasPassword: " + hasPassword + ", hasNewPassword: " + hasNewPassword);
+            System.out.println("[TrueAuth] client auth packet ackOk: " + ackOk + ", hasPassword: " + (clientPasswordHash != null && !clientPasswordHash.isEmpty()) + ", hasNewPassword: " + (clientNewPasswordHash != null && !clientNewPasswordHash.isEmpty()));
         }
         
         // If Mojang auth succeeded, proceed with normal premium flow
@@ -243,80 +177,55 @@ public abstract class ServerLoginMixin {
             }
             // Continue with normal Mojang auth flow below...
         } else {
-            // Mojang auth failed, check password authentication on dedicated server
-            if (this.server.isDedicatedServer()) {
-                String name = this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>";
-                
-                // Check if known premium name should be denied offline access (before any password logic)
-                if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
-                    String msg = "This name is bound to a premium UUID.";
-                    if (TrueauthConfig.debug()) {
-                        System.out.println("[TrueAuth] denying offline entry for known premium name: " + name);
-                    }
-                    sendDisconnectWithReason(Component.literal(msg));
-                    clearFabricApiQueryChannel(this.trueauth$txId);
-                    reset(); ci.cancel(); return;
-                }
-                
-                if (hasPassword && clientPasswordHash != null) {
-                    // Check if player already has a stored password
-                    if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && !TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
-                        // Existing player - verify password
-                        String serverPasswordHash = TrueauthRuntime.NAME_REGISTRY.getPassword(name);
-                        if (serverPasswordHash != null && serverPasswordHash.equals(clientPasswordHash)) {
-                            // Password matches, allow access
-                            if (hasNewPassword && clientNewPasswordHash != null && !clientNewPasswordHash.isEmpty()) {
-                                TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(name, this.authenticatedProfile.getId(), ip, clientNewPasswordHash);
-                                if (TrueauthConfig.debug()) {
-                                    System.out.println("[TrueAuth] password changed for player: " + name);
-                                }
-                            }
-                            AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
-                            AuthState.markAuthSuccess(this.connection, TrueauthRuntime.NAME_REGISTRY.getPassword(name));
-                            clearFabricApiQueryChannel(this.trueauth$txId);
-                            reset(); ci.cancel(); return;
-                        } else {
-                            // Password doesn't match
-                            String msg = "Incorrect password! If this is a mistake, contact the server administrator.";
-                            if (TrueauthConfig.debug()) {
-                                System.out.println("[TrueAuth] password auth failed, player: " + name + ", ip: " + ip + ", message: " + msg);
-                            }
-                            sendDisconnectWithReason(Component.literal(msg));
-                            clearFabricApiQueryChannel(this.trueauth$txId);
-                            reset(); ci.cancel(); return;
-                        }
+            if (!clientPasswordHash.isEmpty()) {
+                // Check if player already has a stored password
+                if (TrueauthRuntime.NAME_REGISTRY.isRegistered(playerName) && !TrueauthRuntime.NAME_REGISTRY.isPremium(playerName)) {
+                    // Existing player - verify password
+                    String serverPasswordHash = TrueauthRuntime.NAME_REGISTRY.getPassword(playerName);
+                    if (serverPasswordHash.equals(clientPasswordHash)) {
+                        // Password matches, allow access
+                        boolean passwordChanged = clientNewPasswordHash != null && !clientNewPasswordHash.isEmpty();
+                        String passwordToSend = passwordChanged ? clientNewPasswordHash : serverPasswordHash;
+                        if (passwordChanged && TrueauthConfig.debug()) System.out.println("[TrueAuth] password change requested for player: " + playerName);
+                        // Store pending password hash - will be saved after client confirms
+                        this.trueauth$pendingPasswordHash = passwordToSend;
+                        // Send AuthResultPayload to client with password hash and passwordChanged flag
+                        this.trueauth$resultTxId = TRUEUUID$NEXT_TX_ID.getAndIncrement();
+                        AuthQueryTracker.markResult(this.trueauth$resultTxId);
+                        AuthResultPayload resultPayload = new AuthResultPayload(passwordToSend, passwordChanged);
+                        this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$resultTxId, resultPayload));
+                        ci.cancel(); return;
                     } else {
-                        // New player - store their password and allow access
-                        TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(name, this.authenticatedProfile.getId(), ip, clientPasswordHash);
+                        // Password doesn't match
+                        String msg = "Incorrect password! If this is a mistake, contact the server administrator.";
                         if (TrueauthConfig.debug()) {
-                            System.out.println("[TrueAuth] new player registered, player: " + name + ", ip: " + ip);
+                            System.out.println("[TrueAuth] password auth failed, player: " + playerName + ", ip: " + ip + ", message: " + msg);
                         }
-                        AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
-                        AuthState.markAuthSuccess(this.connection, clientPasswordHash);
-                        clearFabricApiQueryChannel(this.trueauth$txId);
+                        AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
                         reset(); ci.cancel(); return;
                     }
                 } else {
-                    // No password provided - technical error
-                    String msg = "Password retrieval failed. Please restart your game and try again.";
+                    // New player - store pending password hash, will be saved after client confirms
+                    this.trueauth$pendingPasswordHash = clientPasswordHash;
                     if (TrueauthConfig.debug()) {
-                        System.out.println("[TrueAuth] no password provided, player: " + name + ", ip: " + ip);
+                        System.out.println("[TrueAuth] new player pending registration: " + playerName + ", ip: " + ip);
                     }
-                    sendDisconnectWithReason(Component.literal(msg));
-                    clearFabricApiQueryChannel(this.trueauth$txId);
-                    reset(); ci.cancel(); return;
+                    // Send AuthResultPayload to client with password hash (passwordChanged=false for new players)
+                    this.trueauth$resultTxId = TRUEUUID$NEXT_TX_ID.getAndIncrement();
+                    AuthQueryTracker.markResult(this.trueauth$resultTxId);
+                    AuthResultPayload resultPayload = new AuthResultPayload(clientPasswordHash, false);
+                    this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$resultTxId, resultPayload));
+                    ci.cancel(); return;
                 }
+            } else {
+                // No password provided - technical error
+                String msg = "Password retrieval failed. Please restart your game and try again.";
+                if (TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] no password provided, player: " + playerName + ", ip: " + ip);
+                }
+                AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
+                reset(); ci.cancel(); return;
             }
-        }
-        
-        // If we get here and ackOk is false, use existing failure logic
-        if (!ackOk) {
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] auth failed, player: " + (this.authenticatedProfile != null ? this.authenticatedProfile.getName() : "<unknown>") + ", ip: " + ip + ", reason: client rejected");
-            }
-            handleAuthFailure(ip, "client rejected");
-            clearFabricApiQueryChannel(this.trueauth$txId);
-            reset(); ci.cancel(); return;
         }
 
         // Idempotency protection: if already handled this handshake's ack, ignore duplicate packet
@@ -324,23 +233,19 @@ public abstract class ServerLoginMixin {
             if (TrueauthConfig.debug()) {
                 System.out.println("[TrueAuth] duplicate auth packet ignored, txId: " + this.trueauth$txId);
             }
-            clearFabricApiQueryChannel(this.trueauth$txId);
             ci.cancel();
             return;
         }
         this.trueauth$ackHandled = true;
 
-        // 关键：使用异步 API，不在主线程阻塞
+        // Key point: use the asynchronous API and do not block the main thread
         try {
-            // 立即取消原始调用（以免继续执行原有逻辑），但不要 reset()，保留状态直到回调完成
+            // Immediately cancel the original invocation (to prevent the original logic from continuing), but do not call `reset()`; keep the state until the callback completes
             ci.cancel();
             
-            // Clear TrueAuth's transaction ID from Fabric API's channels map to prevent blocking
-            clearFabricApiQueryChannel(this.trueauth$txId);
-
             SessionCheck.hasJoinedAsync(this.authenticatedProfile.getName(), this.trueauth$nonce, ip)
                     .whenComplete((resOpt, throwable) -> {
-                        // 始终在主线程处理后续逻辑
+                        // Always handle subsequent logic on the main thread
                         server.execute(() -> {
                             try {
                                 if (throwable != null) {
@@ -361,19 +266,10 @@ public abstract class ServerLoginMixin {
 
                                 var res = resOpt.get();
 
-                                TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip);
+                                TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip, payload.passwordHash());
                                 TrueauthRuntime.IP_GRACE.record(res.name(), ip, res.uuid());
 
-                                GameProfile newProfile = new GameProfile(res.uuid(), res.name());
-                                var propMap = newProfile.getProperties();
-                                propMap.removeAll("textures");
-                                for (var p : res.properties()) {
-                                    if (p.signature() != null) {
-                                        propMap.put(p.name(), new Property(p.name(), p.value(), p.signature()));
-                                    } else {
-                                        propMap.put(p.name(), new Property(p.name(), p.value()));
-                                    }
-                                }
+                                GameProfile newProfile = AuthProcessor.buildProfileFromSession(res);
                                 try {
                                     if (TrueauthConfig.debug()) {
                                         System.out.println("[TrueAuth] HANDOFF: calling startClientVerification for " + newProfile.getName());
@@ -419,10 +315,10 @@ public abstract class ServerLoginMixin {
 
         switch (d.kind) {
             case PREMIUM_GRACE -> {
-                UUID premium = d.premiumUuid != null ? d.premiumUuid
-                        : TrueauthRuntime.NAME_REGISTRY.getPremiumUuid(name).orElse(null);
-                if (premium != null) {
-                    this.authenticatedProfile = new GameProfile(premium, name);
+                if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name)) {
+                    if (TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
+                        this.authenticatedProfile = new GameProfile(TrueauthRuntime.NAME_REGISTRY.getUuid(name), name);
+                    }
                 } else {
                     AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
                 }
@@ -439,19 +335,9 @@ public abstract class ServerLoginMixin {
                 if (TrueauthConfig.debug()) {
                     System.out.println("[TrueAuth] auth denied, player: " + name + ", ip: " + ip + ", message: " + msg);
                 }
-                sendDisconnectWithReason(Component.literal(msg));
+                AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
             }
         }
-    }
-
-    @Unique
-    private void sendDisconnectWithReason(Component reason) {
-        new Thread(() -> {
-            try {
-                this.connection.send(new ClientboundLoginDisconnectPacket(reason));
-            } catch (Throwable ignored) {}
-            this.connection.disconnect(reason);
-        }, "TrueUUID-AsyncDisconnect").start();
     }
 
     @Unique
@@ -462,50 +348,6 @@ public abstract class ServerLoginMixin {
         this.trueauth$txId = 0;
         this.trueauth$nonce = null;
         this.trueauth$sentAt = 0L;
-    }
-    
-    @Unique
-    private void clearFabricApiQueryChannel(int txId) {
-        if (!isForgifiedFabricAPIPresent()) return;
-        
-        try {
-            // Get the addon from Fabric API's NetworkHandlerExtensions interface
-            Object addon = null;
-            for (Class<?> iface : this.getClass().getInterfaces()) {
-                if (iface.getName().contains("NetworkHandlerExtensions")) {
-                    Method getAddonMethod = iface.getMethod("getAddon");
-                    addon = getAddonMethod.invoke(this);
-                    break;
-                }
-            }
-            
-            if (addon == null) return;
-            
-            // Access the channels map from ServerLoginNetworkAddon
-            Field channelsField = null;
-            for (Field f : addon.getClass().getDeclaredFields()) {
-                if (Map.class.isAssignableFrom(f.getType())) {
-                    channelsField = f;
-                    break;
-                }
-            }
-            
-            if (channelsField != null) {
-                channelsField.setAccessible(true);
-                @SuppressWarnings("unchecked")
-                Map<Integer, ?> channels = (Map<Integer, ?>) channelsField.get(addon);
-                if (channels != null && channels.containsKey(txId)) {
-                    channels.remove(txId);
-                    if (TrueauthConfig.debug()) {
-                        System.out.println("[TrueAuth] cleared Fabric API query channel for txId: " + txId);
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] failed to clear Fabric API query channel: " + t.getMessage());
-            }
-        }
     }
 
     @Invoker("startClientVerification")

@@ -6,7 +6,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.EditServerScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
 import net.minecraft.client.gui.screens.multiplayer.SafetyScreen;
@@ -17,7 +16,7 @@ import com.dadoirie.trueauth.config.TrueauthConfig;
  * Event handler that automatically prompts for password when needed.
  * 
  * Only handles the automatic prompt case (user has no password).
- * Manual password changes should call PasswordScreen directly.
+ * Manual password changes calls PasswordScreen directly.
  */
 @OnlyIn(Dist.CLIENT)
 public final class PasswordPrompter {
@@ -38,18 +37,6 @@ public final class PasswordPrompter {
     
     @SubscribeEvent
     public void onScreenOpen(ScreenEvent.Opening event) {
-        String screenClassName = event.getScreen().getClass().getName();
-        
-        if (screenClassName.equals("me.axieum.mcmod.authme.api.gui.screen.AuthMethodScreen") ||
-            screenClassName.equals("me.axieum.mcmod.authme.api.gui.screen.MicrosoftAuthScreen") ||
-            screenClassName.equals("me.axieum.mcmod.authme.api.gui.screen.OfflineAuthScreen")) {
-            System.out.println("[TrueAuth] AuthMe screen detected: " + event.getScreen().getClass().getSimpleName() + " - isPremium: " + ProfileTypeState.isPremium());
-        }
-        
-        if (event.getScreen() instanceof EditServerScreen) {
-            System.out.println("[TrueAuth] EditServerScreen detected - isPremium: " + ProfileTypeState.isPremium());
-        }
-
         if (!(event.getScreen() instanceof JoinMultiplayerScreen)) return;
         
         if (TrueauthConfig.debug()) {
@@ -62,17 +49,11 @@ public final class PasswordPrompter {
                                   lastScreenClass.equals("me.axieum.mcmod.authme.api.gui.screen.MicrosoftAuthScreen") ||
                                   lastScreenClass.equals("me.axieum.mcmod.authme.api.gui.screen.OfflineAuthScreen");
         
-        if (event.getCurrentScreen() instanceof SafetyScreen || 
-            event.getCurrentScreen() instanceof TitleScreen || 
-            isAuthMeScreen) {
-            ProfileTypeState.evaluate();
-        } else {
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] NO MATCH - was not title/safety/authme screen - not evaluated");
-            }
+        if (!(event.getCurrentScreen() instanceof SafetyScreen) && 
+            !(event.getCurrentScreen() instanceof TitleScreen) && 
+            !isAuthMeScreen) {
+            return;
         }
-        
-        if (ProfileTypeState.isPremium()) return;
         
         String currentUser = Minecraft.getInstance().getUser().getName();
         

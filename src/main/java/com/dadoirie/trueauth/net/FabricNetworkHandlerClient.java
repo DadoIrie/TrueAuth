@@ -28,13 +28,12 @@ public final class FabricNetworkHandlerClient {
     
     public static void init() {
         ClientLoginNetworking.registerGlobalReceiver(NetIds.AUTH, FabricNetworkHandlerClient::handleAuthQuery);
-        ClientLoginNetworking.registerGlobalReceiver(NetIds.PASSWORD, FabricNetworkHandlerClient::handlePasswordQuery);
         ClientLoginNetworking.registerGlobalReceiver(NetIds.AUTH_RESULT, FabricNetworkHandlerClient::handleAuthResult);
         LOGGER.info("[TrueAuth] Registered Fabric API client login networking");
     }
     
     /**
-     * First query: Handle session auth (joinServer).
+     * First query: Handle session auth (joinServer) and send password.
      */
     private static CompletableFuture<FriendlyByteBuf> handleAuthQuery(
             Minecraft client,
@@ -43,85 +42,60 @@ public final class FabricNetworkHandlerClient {
             Consumer<PacketSendListener> callbacksConsumer
     ) {
         String nonce = buf.readUtf();
+        boolean skipMojang = buf.readBoolean();
         
-        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: received auth query with nonce=" + nonce);
+        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: received auth query with nonce=" + nonce + ", skipMojang=" + skipMojang);
         
         User user = client.getUser();
         UUID profileId = user.getProfileId();
         String token = user.getAccessToken();
         String profileName = user.getName();
         
-        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: initiating joinServer for profile=" + profileName);
-        
-        return CompletableFuture.supplyAsync(() -> {
-            boolean ok = false;
-            try {
-                client.getMinecraftSessionService().joinServer(profileId, token, nonce);
-                ok = true;
-                if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: joinServer SUCCESS for profile=" + profileName);
-            } catch (Exception e) {
-                if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: joinServer FAILED for profile=" + profileName + " " + e.getMessage());
-            }
-            
-            FriendlyByteBuf response = new FriendlyByteBuf(Unpooled.buffer());
-            response.writeBoolean(ok);
-            return response;
-        });
-    }
-    
-    /**
-     * Second query: Handle password request (only for offline players).
-     * Server requests password, client responds with stored password hash.
-     */
-    private static CompletableFuture<FriendlyByteBuf> handlePasswordQuery(
-            Minecraft client,
-            ClientHandshakePacketListenerImpl handler,
-            FriendlyByteBuf buf,
-            Consumer<PacketSendListener> callbacksConsumer
-    ) {
-        User user = client.getUser();
-        String profileName = user.getName();
-        
-        // Get hostname from ConnectScreenMixin storage
         String hostname = ServerAddressStorage.get("current");
         
-        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: received password query, hostname=" + hostname);
-        
-        // ! CRITICAL - Debug: print password storage before sending password
-        if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] CLIENT: === BEFORE SENDING PASSWORD ===");
-            PasswordStorage.debugPrintAll();
-        }
-        
         return CompletableFuture.supplyAsync(() -> {
-            String passwordHash = "";
-            String newPasswordHash = "";
-            
-            if (hostname != null) {
-                // Get stored password for this server
-                passwordHash = PasswordStorage.getPasswordForServer(profileName, hostname);
-                
-                // Check if there's a pending password change
-                newPasswordHash = PasswordStorage.getNewPasswordForServer(profileName, hostname);
-                
-                if (TrueauthConfig.debug()) {
-                    System.out.println("[TrueAuth] CLIENT: password found=" + !passwordHash.isEmpty() + ", hasNewPassword=" + !newPasswordHash.isEmpty());
+            boolean ok;
+            if (skipMojang) {
+                // Server signaled nomojang mode - skip joinServer call
+                ok = false;
+                if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: server signaled nomojang mode, skipping Mojang auth");
+            } else {
+                ok = false;
+                try {
+                    client.getMinecraftSessionService().joinServer(profileId, token, nonce);
+                    ok = true;
+                    if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: joinServer SUCCESS for profile=" + profileName);
+                } catch (Exception e) {
+                    if (TrueauthConfig.debug()) System.out.println("[TrueAuth] CLIENT: joinServer FAILED for profile=" + profileName + " " + e.getMessage());
                 }
             }
             
+            String passwordHash = PasswordStorage.getPasswordForServer(profileName, hostname);
+            String newPasswordHash = PasswordStorage.getNewPasswordForServer(profileName, hostname);
+            
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] CLIENT: hasNewPassword=" + !newPasswordHash.isEmpty());
+            }
+                    
+            // ! CRITICAL - Debug: print password storage before sending password
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] CLIENT: === BEFORE SENDING PASSWORD ===");
+                PasswordStorage.debugPrintAll();
+            }
+
             FriendlyByteBuf response = new FriendlyByteBuf(Unpooled.buffer());
-            response.writeBoolean(!passwordHash.isEmpty()); // hasPassword
-            response.writeUtf(passwordHash.isEmpty() ? "" : passwordHash); // passwordHash
-            response.writeBoolean(!newPasswordHash.isEmpty()); // hasNewPassword
-            response.writeUtf(newPasswordHash.isEmpty() ? "" : newPasswordHash); // newPasswordHash
+            response.writeBoolean(ok);
+            response.writeUtf(passwordHash);
+            response.writeUtf(newPasswordHash);
             return response;
         });
     }
+
     
     /**
-     * Third query: Handle auth result from server.
+     * Second query: Handle auth result from server.
      * Server sends password hash and passwordChanged flag.
-     * Client stores password and confirms change if needed.
+     * Client stores password and sends back hash for verification.
      */
     private static CompletableFuture<FriendlyByteBuf> handleAuthResult(
             Minecraft client,
@@ -159,8 +133,10 @@ public final class FabricNetworkHandlerClient {
                 PasswordStorage.debugPrintAll();
             }
             
-            // Send empty response to acknowledge receipt
-            return new FriendlyByteBuf(Unpooled.buffer());
+            // Send back the password hash for server verification
+            FriendlyByteBuf response = new FriendlyByteBuf(Unpooled.buffer());
+            if (!passwordHash.isEmpty()) response.writeUtf(passwordHash);
+            return response;
         });
     }
 }

@@ -12,7 +12,7 @@ public class RecentIpGraceCache {
     private final Map<String, Rec> map = new HashMap<>();
 
     private static String key(String name, String ip) {
-        return name.toLowerCase(Locale.ROOT) + "|" + ip;
+        return name + "|" + ip;
     }
 
     public synchronized void record(String name, String ip, UUID premiumUuid) {

@@ -11,12 +11,14 @@
     "server.ServerLoginAccessor",
     "server.ServerboundCustomQueryAnswerMixin",
     "server.ServerLoginMixin",
-    "server.WhitelistCommandMixin"
+    "server.WhitelistCommandMixin",
+    "server.OpCommandMixin"
   ],
   "client": [
     "client.ClientHandshakeMixin",
     "client.ConnectScreenMixin",
-    "client.AuthMethodScreenMixin"
+    "client.AuthMethodScreenMixin",
+    "client.AuthResultHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -25,23 +25,30 @@ public abstract class ClientHandshakeMixin {
 
     @Inject(method = "handleCustomQuery", at = @At("HEAD"), cancellable = true)
     private void trueauth$onCustomQuery(ClientboundCustomQueryPacket packet, CallbackInfo ci) {
-        if (true) return; // ! SILENCED - Fabric API handles this
         CustomQueryPayload payload = packet.payload();
         if (!NetIds.AUTH.equals(payload.id())) return;
-        if(!(payload instanceof AuthPayload(String serverId))) return;
+        if(!(payload instanceof AuthPayload(String serverId, boolean skipMojang))) return;
 
         boolean ok;
-        try {
-            Minecraft mc = Minecraft.getInstance();
-            User user = mc.getUser();
-            var profile = user.getProfileId();
-            String token = user.getAccessToken();
-
-            // Token is only used locally
-            mc.getMinecraftSessionService().joinServer(profile, token, serverId);
-            ok = true;
-        } catch (Throwable t) {
+        if (skipMojang) {
+            // Server signaled nomojang mode - skip joinServer call
             ok = false;
+            if (TrueauthConfig.debug()) {
+                System.out.println("[TrueAuth] server signaled nomojang mode, skipping Mojang auth");
+            }
+        } else {
+            try {
+                Minecraft mc = Minecraft.getInstance();
+                User user = mc.getUser();
+                var profile = user.getProfileId();
+                String token = user.getAccessToken();
+
+                // Token is only used locally
+                mc.getMinecraftSessionService().joinServer(profile, token, serverId);
+                ok = true;
+            } catch (Throwable t) {
+                ok = false;
+            }
         }
         
         // Get the current server hostname
@@ -49,7 +56,7 @@ public abstract class ClientHandshakeMixin {
         
         // ! CRITICAL - remove or comment out for release builds - Debug: print entire password storage before handshake
         if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] === BEFORE HANDSHKE ===");
+            System.out.println("[TrueAuth] === BEFORE HANDSHAKE ===");
             System.out.println("[TrueAuth] Server: " + serverHostname);
             PasswordStorage.debugPrintAll();
         }
@@ -57,32 +64,13 @@ public abstract class ClientHandshakeMixin {
         // Get current username for password lookup
         String username = Minecraft.getInstance().getUser().getName();
         
-        // Check if we have a server-specific password
-        String passwordHash;
-        String newPasswordHash = null;
+        String passwordHash = PasswordStorage.getPasswordForServer(username, serverHostname);
+        String newPasswordHash = PasswordStorage.getNewPasswordForServer(username, serverHostname);
         
-        if (serverHostname != null && PasswordStorage.hasServerEntry(username, serverHostname)) {
-            // Server exists in storage - use server-specific password
-            passwordHash = PasswordStorage.getPasswordForServer(username, serverHostname);
-            newPasswordHash = PasswordStorage.getNewPasswordForServer(username, serverHostname);
-        } else {
-            // New server - use default password
-            passwordHash = PasswordStorage.getServerPassword(username);
-        }
-        
-        boolean hasPassword = passwordHash != null && !passwordHash.isEmpty();
-        
-        AuthAnswerPayload answer;
-        if (hasPassword && newPasswordHash != null && !newPasswordHash.isEmpty()) {
-            // Has both password and newPassword
-            answer = new AuthAnswerPayload(ok, passwordHash, newPasswordHash);
-        } else if (hasPassword) {
-            // Has only password
-            answer = new AuthAnswerPayload(ok, passwordHash);
-        } else {
-            // No password
-            answer = new AuthAnswerPayload(ok);
-        }
+        AuthAnswerPayload answer = newPasswordHash.isEmpty() 
+            ? new AuthAnswerPayload(ok, passwordHash)
+            : new AuthAnswerPayload(ok, passwordHash, newPasswordHash);
+
         
         this.connection.send(new ServerboundCustomQueryAnswerPacket(packet.transactionId(), answer));
         ci.cancel();

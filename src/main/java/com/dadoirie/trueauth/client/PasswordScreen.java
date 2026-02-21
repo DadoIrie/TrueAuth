@@ -156,10 +156,9 @@ public final class PasswordScreen extends Screen {
         this.confirmPasswordField.setMaxLength(32);
         this.addRenderableWidget(this.confirmPasswordField);
         
-        // Lock button (only in SERVER_PASSWORD mode)
         if (this.mode == Mode.SERVER_PASSWORD) {
             this.lockButton = new ImageButton(
-                this.width / 2 - 100 - 25,
+                this.width / 2 - 100,
                 this.height / 2 + 40,
                 20,
                 20,
@@ -173,7 +172,6 @@ public final class PasswordScreen extends Screen {
             this.addRenderableWidget(this.lockButton);
         }
         
-        // OK button
         this.okButton = Button.builder(
             Component.literal("OK"),
             button -> this.onOkPressed()
@@ -185,12 +183,11 @@ public final class PasswordScreen extends Screen {
         ).build();
         this.addRenderableWidget(this.okButton);
         
-        // Toggle obfuscation button (eye icon)
         this.toggleObfuscationButton = Button.builder(
             Component.literal(this.obfuscated ? "§a👁" : "§c👁"),
             button -> this.toggleObfuscation()
         ).bounds(
-            this.width / 2 + 100 + 5,
+            this.width / 2 + 80,
             this.height / 2 + 40,
             20,
             20

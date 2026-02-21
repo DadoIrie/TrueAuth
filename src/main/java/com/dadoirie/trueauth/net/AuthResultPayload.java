@@ -1,29 +1,29 @@
 package com.dadoirie.trueauth.net;
 
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.login.custom.CustomQueryPayload;
+import net.minecraft.resources.ResourceLocation;
 
 /**
- * Payload sent from server to client during CONFIGURATION phase
- * to notify the client of the password authentication result.
- * Contains the password hash for the client to store.
+ * Payload sent from server to client during LOGIN phase.
+ * Contains the password hash for the client to store and a flag
+ * indicating if the password was changed during this login.
  */
-public record AuthResultPayload(String passwordHash) implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<AuthResultPayload> TYPE = 
-        new CustomPacketPayload.Type<>(NetIds.AUTH_RESULT);
+public record AuthResultPayload(String passwordHash, boolean passwordChanged) implements CustomQueryPayload {
+    public static final ResourceLocation ID = NetIds.AUTH_RESULT;
     
-    // Configuration phase uses FriendlyByteBuf, not RegistryFriendlyByteBuf
-    public static final StreamCodec<FriendlyByteBuf, AuthResultPayload> STREAM_CODEC = 
-        StreamCodec.composite(
-            ByteBufCodecs.STRING_UTF8,
-            AuthResultPayload::passwordHash,
-            AuthResultPayload::new
-        );
+    public AuthResultPayload(FriendlyByteBuf buf) {
+        this(buf.readUtf(32767), buf.readBoolean());
+    }
     
     @Override
-    public CustomPacketPayload.Type<AuthResultPayload> type() {
-        return TYPE;
+    public ResourceLocation id() {
+        return ID;
+    }
+    
+    @Override
+    public void write(FriendlyByteBuf buf) {
+        buf.writeUtf(passwordHash);
+        buf.writeBoolean(passwordChanged);
     }
 }

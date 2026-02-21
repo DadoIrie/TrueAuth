@@ -22,20 +22,15 @@ public class PasswordField extends EditBox {
     @Override
     public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         if (this.obfuscated) {
-            // Store the original value
             String realValue = this.getValue();
             
-            // Temporarily replace the value with asterisks for rendering
             String obfuscatedValue = "*".repeat(realValue.length());
             this.setValue(obfuscatedValue);
             
-            // Render the obfuscated text
             super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
             
-            // Restore the original value
             this.setValue(realValue);
         } else {
-            // Render normally without obfuscation
             super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
         }
     }

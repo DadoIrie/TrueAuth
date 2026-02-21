@@ -1,6 +1,7 @@
 package com.dadoirie.trueauth.mixin.client;
 
 import com.dadoirie.trueauth.net.AuthPayload;
+import com.dadoirie.trueauth.net.AuthResultPayload;
 import com.dadoirie.trueauth.net.NetIds;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.login.ClientboundCustomQueryPacket;
@@ -17,9 +18,10 @@ public abstract class ClientboundCustomQueryMixin {
     private static void trueauth$decodeAuth(ResourceLocation id,
                                             FriendlyByteBuf buf,
                                             CallbackInfoReturnable<CustomQueryPayload> cir) {
-        if (true) return; // ! SILENCED - Fabric API handles this with PacketByteBufLoginQueryRequestPayload
         if (NetIds.AUTH.equals(id)) {
             cir.setReturnValue(new AuthPayload(buf));
+        } else if (NetIds.AUTH_RESULT.equals(id)) {
+            cir.setReturnValue(new AuthResultPayload(buf));
         }
     }
 }

@@ -1,7 +1,5 @@
 package com.dadoirie.trueauth.client;
 
-import java.util.Locale;
-
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
@@ -42,7 +40,7 @@ public final class UserPasswordVerifyScreen extends Screen {
      * Check if the given username has been verified for this session.
      */
     public static boolean isVerified(String username) {
-        return username != null && username.toLowerCase(Locale.ROOT).equals(verifiedUsername);
+        return username != null && username.equals(verifiedUsername);
     }
     
     private PasswordField passwordField;
@@ -210,7 +208,7 @@ public final class UserPasswordVerifyScreen extends Screen {
         
         if (hashedPassword.equals(storedPassword)) {
             // Password matches - mark this user as verified and proceed to multiplayer screen
-            verifiedUsername = this.username.toLowerCase(Locale.ROOT);
+            verifiedUsername = this.username;
             this.minecraft.setScreen(this.targetScreen);
         } else {
             // Password doesn't match

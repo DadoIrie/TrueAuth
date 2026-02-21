@@ -4,6 +4,7 @@ import com.dadoirie.trueauth.Trueauth;
 import com.dadoirie.trueauth.config.TrueauthConfig;
 import com.dadoirie.trueauth.server.NameRegistry;
 import com.dadoirie.trueauth.server.TrueauthRuntime;
+import com.dadoirie.trueauth.server.Whitelist;
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -42,9 +43,8 @@ public class TrueauthCommands {
         CommandDispatcher<CommandSourceStack> d = e.getDispatcher();
         d.register(Commands.literal("trueauth")
                 .requires(src -> src.hasPermission(3))
-                // 新增：/trueauth mojang status
+                // Added: `/trueauth mojang status`
                 .then(Commands.literal("config")
-                        .requires(src -> src.hasPermission(3))
                         .then(Commands.literal("nomojang")
                                 .then(Commands.literal("status")
                                         .executes(ctx -> cmdNomojangStatus(ctx.getSource()))
@@ -84,6 +84,25 @@ public class TrueauthCommands {
                 .then(Commands.literal("reload")
                         .executes(ctx -> cmdConfigReload(ctx.getSource()))
                 )
+                // Whitelist commands - use string argument to preserve exact name capitalization
+                .then(Commands.literal("whitelist")
+                        .then(Commands.literal("add")
+                                .then(Commands.argument("name", StringArgumentType.word())
+                                        .executes(ctx -> cmdWhitelistAdd(ctx.getSource(), StringArgumentType.getString(ctx, "name"), false))
+                                        .then(Commands.literal("premium")
+                                                .executes(ctx -> cmdWhitelistAdd(ctx.getSource(), StringArgumentType.getString(ctx, "name"), true))
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("remove")
+                                .then(Commands.argument("name", StringArgumentType.word())
+                                        .executes(ctx -> cmdWhitelistRemove(ctx.getSource(), StringArgumentType.getString(ctx, "name")))
+                                )
+                        )
+                        .then(Commands.literal("list")
+                                .executes(ctx -> cmdWhitelistList(ctx.getSource()))
+                        )
+                )
                 // TODO: Rewrite to use NameRegistry.removeEntry() instead of PlayerPasswordStorage
                 /* .then(Commands.literal("password")
                         .then(Commands.literal("remove")
@@ -96,24 +115,24 @@ public class TrueauthCommands {
 
     }
 
-    // 新增方法：runtime 从磁盘重载配置并将值写入 TrueauthConfig.COMMON
+    // New method: reload configuration from disk at runtime and write values into `TrueauthConfig.COMMON`
     private static int cmdConfigReload(CommandSourceStack src) {
         try {
             Path cfgPath = FMLPaths.CONFIGDIR.get().resolve("trueauth-common.toml");
             CommentedFileConfig cfg = CommentedFileConfig.builder(cfgPath)
-                    .sync() // 与磁盘保持同步
+                    .sync() // Keep in sync with disk
                     .autosave()
                     .build();
             cfg.load();
 
-            // 辅助读取函数：优先读取 auth.xxx，其次尝试不带 auth 前缀的样式（兼容不同定义位置）
+            // Helper read function: first try `auth.xxx`, then try the version without the `auth` prefix (compatible with different definition locations)
             java.util.function.BiFunction<String, String, Object> getVal = (authKey, altKey) -> {
                 if (cfg.contains(authKey)) return cfg.get(authKey);
                 if (altKey != null && cfg.contains(altKey)) return cfg.get(altKey);
                 return null;
             };
 
-            // 布尔项
+            // Boolean items
             Object v;
             v = getVal.apply("auth.nomojang.enabled", "nomojang.enabled");
             if (v instanceof Boolean) TrueauthConfig.COMMON.nomojangEnabled.set((Boolean) v);
@@ -133,14 +152,14 @@ public class TrueauthCommands {
             v = getVal.apply("auth.allowOfflineOnFailure", "allowOfflineOnFailure");
             if (v instanceof Boolean) TrueauthConfig.COMMON.allowOfflineOnFailure.set((Boolean) v);
 
-            // 数值项
+            // Numeric items
             v = getVal.apply("auth.timeoutMs", "timeoutMs");
             if (v instanceof Number) TrueauthConfig.COMMON.timeoutMs.set(((Number) v).longValue());
 
             v = getVal.apply("auth.recentIpGrace.ttlSeconds", "recentIpGrace.ttlSeconds");
             if (v instanceof Number) TrueauthConfig.COMMON.recentIpGraceTtlSeconds.set(((Number) v).intValue());
 
-            // 字符串项
+            /// String items
             v = getVal.apply("auth.timeoutKickMessage", "timeoutKickMessage");
             if (v != null) TrueauthConfig.COMMON.timeoutKickMessage.set(String.valueOf(v));
 
@@ -253,7 +272,7 @@ public class TrueauthCommands {
         try {
             if (backup) {
                 String ts = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now());
-                Path backupDir = worldRoot.resolve("backups/trueauth/" + ts + "/" + name.toLowerCase(Locale.ROOT));
+                Path backupDir = worldRoot.resolve("backups/trueauth/" + ts + "/" + name);
                 Files.createDirectories(backupDir);
                 copyIfExists(premDat, backupDir.resolve("premium.dat"));
                 copyIfExists(offDat, backupDir.resolve("offline.dat"));
@@ -263,16 +282,16 @@ public class TrueauthCommands {
                 copyIfExists(offStats, backupDir.resolve("offline.stats.json"));
             }
 
-            // ==== NBT 合并实现 ====
+            // ==== NBT merge implementation ====
             if (Files.exists(offDat)) {
                 if (!Files.exists(premDat)) {
                     Files.move(offDat, premDat, StandardCopyOption.REPLACE_EXISTING);
                 } else {
-                    // 合并 NBT（背包/末影箱）
+                    // Merge NBT (inventory/ender chest)
                     mergePlayerDatNBT(premDat, offDat, mergeInv, mergeEnder);
                 }
             }
-            // ==== advancements 合并实现 ====
+            // ==== advancements merge implementation ====
             if (Files.exists(offAdv)) {
                 if (!Files.exists(premAdv)) {
                     Files.move(offAdv, premAdv, StandardCopyOption.REPLACE_EXISTING);
@@ -280,7 +299,7 @@ public class TrueauthCommands {
                     mergeAdvancementsJson(premAdv, offAdv);
                 }
             }
-            // ==== stats 合并实现 ====
+            // ==== stats merge implementation ====
             if (Files.exists(offStats)) {
                 if (!Files.exists(premStats)) {
                     Files.move(offStats, premStats, StandardCopyOption.REPLACE_EXISTING);
@@ -299,18 +318,19 @@ public class TrueauthCommands {
     }
 
     private static Optional<NameRegistry.Entry> getEntry(String name) {
-        // 仅供命令打印 premium，用不到其它字段时可改为直接 getPremiumUuid
+        // Only for command printing of `premium`; when other fields are not needed, it can be replaced with a direct `getUuid`
         try {
             var f = NameRegistry.class.getDeclaredField("map");
             f.setAccessible(true);
         } catch (Throwable ignored) {
         }
-        // 简化：复用 getPremiumUuid，并构造一个 Entry
-        return TrueauthRuntime.NAME_REGISTRY.getPremiumUuid(name).map(u -> {
-            NameRegistry.Entry e = new NameRegistry.Entry();
-            e.uuid = u;
-            return e;
-        });
+        // Check if registered first, then get UUID
+        if (!TrueauthRuntime.NAME_REGISTRY.isRegistered(name)) {
+            return Optional.empty();
+        }
+        NameRegistry.Entry e = new NameRegistry.Entry();
+        e.uuid = TrueauthRuntime.NAME_REGISTRY.getUuid(name);
+        return Optional.of(e);
     }
 
     private static void copyIfExists(Path from, Path to) throws Exception {
@@ -320,7 +340,7 @@ public class TrueauthCommands {
         }
     }
 
-    // --- NBT合并：背包/末影箱 ---
+    // --- NBT merge: inventory/ender chest ---
     private static void mergePlayerDatNBT(Path premDat, Path offDat, boolean mergeInv, boolean mergeEnder) throws Exception {
         CompoundTag prem, off;
         try (InputStream is = Files.newInputStream(premDat)) {
@@ -345,12 +365,12 @@ public class TrueauthCommands {
         }
     }
 
-    // 合并规则：以 premium 为主，offline中未出现的item补到后面（不会覆盖原物品槽号）
+    // Merge rule: `premium` takes priority; items in `offline` that do not appear are appended at the end (original slot numbers are not overwritten)
     private static boolean mergeItemListTag(CompoundTag prem, CompoundTag off, String key) {
         if (!prem.contains(key) || !off.contains(key)) return false;
         ListTag premList = prem.getList(key, 10); // 10: CompoundTag
         ListTag offList = off.getList(key, 10);
-        // 以槽号为主键
+        // Use the slot number as the primary key
         Set<Integer> premSlots = new HashSet<>();
         for (int i = 0; i < premList.size(); ++i) {
             CompoundTag tag = premList.getCompound(i);
@@ -373,7 +393,7 @@ public class TrueauthCommands {
         return changed;
     }
 
-    // --- advancements 合并：并集 ---
+    // --- advancements merge: union ---
     private static void mergeAdvancementsJson(Path premAdv, Path offAdv) throws Exception {
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         JsonObject prem, off;
@@ -397,7 +417,7 @@ public class TrueauthCommands {
         }
     }
 
-    // 更健壮的 mergeStatsJson 实现，处理 JsonElement 类型差异，避免 ClassCastException
+    // A more robust implementation of mergeStatsJson that handles differences in JsonElement types and avoids ClassCastException
     private static void mergeStatsJson(Path premStats, Path offStats) throws Exception {
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         JsonObject prem, off;
@@ -411,7 +431,7 @@ public class TrueauthCommands {
 
         for (String cat : off.keySet()) {
             JsonElement offElem = off.get(cat);
-            // 如果 premium 中没有该分类，直接拷贝整个元素（无论类型）
+            // If the category does not exist in `premium`, copy the entire element directly (regardless of type)
             if (!prem.has(cat)) {
                 prem.add(cat, offElem);
                 changed = true;
@@ -420,7 +440,7 @@ public class TrueauthCommands {
 
             JsonElement premElem = prem.get(cat);
 
-            // 两边都是对象 -> 逐条合并（数值累加，非数值保留 premium）
+            // Both sides are objects -> merge entry by entry (accumulate numeric values; keep `premium` for non-numeric ones)
             if (offElem.isJsonObject() && premElem.isJsonObject()) {
                 JsonObject offCat = offElem.getAsJsonObject();
                 JsonObject premCat = premElem.getAsJsonObject();
@@ -431,7 +451,7 @@ public class TrueauthCommands {
                         changed = true;
                     } else {
                         JsonElement premVal = premCat.get(key);
-                        // 尝试对原语数值做累加
+                        // Attempt to accumulate primitive numeric values
                         if (premVal.isJsonPrimitive() && offVal.isJsonPrimitive()) {
                             JsonPrimitive pPri = premVal.getAsJsonPrimitive();
                             JsonPrimitive oPri = offVal.getAsJsonPrimitive();
@@ -442,17 +462,17 @@ public class TrueauthCommands {
                                     premCat.addProperty(key, a + b);
                                     changed = true;
                                 } catch (Exception ignored) {
-                                    // 若不能以 long 累加则保持 premium 原值
+                                    // If it cannot be accumulated as a long, keep the original `premium` value
                                 }
                             }
                         }
-                        // 其他类型（数组/对象/非数值原语）优先保留 prem，不覆盖
+                        // For other types (arrays/objects/non-numeric primitives), prefer keeping `prem` and do not overwrite it
                     }
                 }
                 prem.add(cat, premCat);
             } else {
-                // 类型不一致或都不是对象：
-                // 若两边都是原语且为数字，则尝试累加（例如少见的数值统计）
+                // Types are inconsistent or neither is an object:
+                // If both sides are primitives and are numbers, then try to add them together (e.g., for rare numeric statistics)
                 if (premElem.isJsonPrimitive() && offElem.isJsonPrimitive()) {
                     JsonPrimitive pPri = premElem.getAsJsonPrimitive();
                     JsonPrimitive oPri = offElem.getAsJsonPrimitive();
@@ -463,11 +483,11 @@ public class TrueauthCommands {
                             prem.addProperty(cat, a + b);
                             changed = true;
                         } catch (Exception ignored) {
-                            // 不可累加则保留 prem
+                            // If it cannot be accumulated, keep `prem`
                         }
                     }
                 }
-                // 其余情况（类型不一致且 prem 已存在）保持 prem，不覆盖
+                // In all other cases (types are inconsistent and `prem` already exists), keep `prem` and do not overwrite it
             }
         }
 
@@ -501,4 +521,56 @@ public class TrueauthCommands {
             return 0;
         }
     } */
+    
+    // Whitelist commands - preserve exact name capitalization
+    private static int cmdWhitelistAdd(CommandSourceStack src, String name, boolean premiumOnly) {
+        Whitelist whitelist = Whitelist.getInstance();
+        Whitelist.Entry existing = whitelist.getWhitelistEntry(name);
+        if (existing != null) {
+            src.sendFailure(Component.literal("[TrueAuth] Player " + existing.name + " is already whitelisted" + 
+                    (existing.premiumOnly ? " (premium only)" : "")));
+            return 0;
+        }
+        if (whitelist.add(name, premiumOnly)) {
+            src.sendSuccess(() -> Component.literal("[TrueAuth] Added " + name + " to whitelist" + 
+                    (premiumOnly ? " (premium only)" : "")), true);
+            return 1;
+        }
+        src.sendFailure(Component.literal("[TrueAuth] Failed to add " + name + " to whitelist"));
+        return 0;
+    }
+    
+    private static int cmdWhitelistRemove(CommandSourceStack src, String name) {
+        Whitelist whitelist = Whitelist.getInstance();
+        Whitelist.Entry existing = whitelist.getWhitelistEntry(name);
+        if (existing == null) {
+            src.sendFailure(Component.literal("[TrueAuth] Player " + name + " is not whitelisted"));
+            return 0;
+        }
+        if (whitelist.remove(name)) {
+            src.sendSuccess(() -> Component.literal("[TrueAuth] Removed " + existing.name + " from whitelist"), true);
+            return 1;
+        }
+        src.sendFailure(Component.literal("[TrueAuth] Failed to remove " + name + " from whitelist"));
+        return 0;
+    }
+    
+    private static int cmdWhitelistList(CommandSourceStack src) {
+        List<Whitelist.Entry> entries = Whitelist.getInstance().getWhitelistedEntries();
+        if (entries.isEmpty()) {
+            src.sendSuccess(() -> Component.literal("[TrueAuth] Whitelist is empty"), false);
+            return 0;
+        }
+        StringBuilder sb = new StringBuilder("[TrueAuth] Whitelist (" + entries.size() + " entries):\n");
+        for (Whitelist.Entry entry : entries) {
+            sb.append("  - ").append(entry.name);
+            if (entry.premiumOnly) {
+                sb.append(" (premium only)");
+            }
+            sb.append("\n");
+        }
+        final String list = sb.toString();
+        src.sendSuccess(() -> Component.literal(list), false);
+        return entries.size();
+    }
 }

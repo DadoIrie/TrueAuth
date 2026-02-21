@@ -18,11 +18,11 @@ import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MinecraftWhitelistChecker {
+public class WhitelistChecker {
     private static final Logger LOGGER = LoggerFactory.getLogger(Trueauth.MODID);
     private static final String WHITELIST_FILE = "whitelist.json";
     private static final String OPS_FILE = "ops.json";
-    private static MinecraftWhitelistChecker instance;
+    private static WhitelistChecker instance;
     
     private final Path file;
     private final Path opsFile;
@@ -31,7 +31,7 @@ public class MinecraftWhitelistChecker {
     private long lastModified = -1;
     private long opsLastModified = -1;
     
-    private MinecraftWhitelistChecker() {
+    private WhitelistChecker() {
         // Use the game directory for whitelist.json and ops.json
         this.file = FMLPaths.GAMEDIR.get().resolve(WHITELIST_FILE);
         this.opsFile = FMLPaths.GAMEDIR.get().resolve(OPS_FILE);
@@ -42,9 +42,9 @@ public class MinecraftWhitelistChecker {
      * Get the singleton instance
      * @return The MinecraftWhitelistChecker instance
      */
-    public static synchronized MinecraftWhitelistChecker getInstance() {
+    public static synchronized WhitelistChecker getInstance() {
         if (instance == null) {
-            instance = new MinecraftWhitelistChecker();
+            instance = new WhitelistChecker();
         }
         return instance;
     }

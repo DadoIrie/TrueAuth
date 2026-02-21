@@ -46,6 +46,9 @@ public final class TrueauthConfig {
     public static String mojangReverseProxy() { return COMMON.mojangReverseProxy.get(); }
     // Whitelist feature
     public static boolean whitelistEnabled() { return COMMON.whitelistEnabled.get(); }
+    // Op feature
+    public static boolean enabledTrueauthOpChanges() { return COMMON.enabledTrueauthOpChanges.get(); }
+    public static boolean opPremiumOnly() { return COMMON.opPremiumOnly.get(); }
 
     public static final class Common {
         public final ModConfigSpec.LongValue timeoutMs;
@@ -72,6 +75,9 @@ public final class TrueauthConfig {
         public final ModConfigSpec.IntValue recentIpGraceTtlSeconds;
         public final ModConfigSpec.BooleanValue debug;
         public final ModConfigSpec.BooleanValue whitelistEnabled;
+        // Op feature
+        public final ModConfigSpec.BooleanValue enabledTrueauthOpChanges;
+        public final ModConfigSpec.BooleanValue opPremiumOnly;
 
         Common(ModConfigSpec.Builder b) {
             b.push("auth");
@@ -109,6 +115,11 @@ public final class TrueauthConfig {
             // Whitelist feature
             whitelistEnabled = b.comment("Enable whitelist feature.")
                     .define("whitelist.enabled", false);
+            // Op feature
+            enabledTrueauthOpChanges = b.comment("Enable TrueAuth op command replacement (uses NameRegistry for UUID lookup, adds optional level and bypassesPlayerLimit arguments).")
+                    .define("op.enabledTrueauthOpChanges", false);
+            opPremiumOnly = b.comment("Require players to be registered as premium to use /op command.")
+                    .define("op.premiumOnly", true);
             b.pop();
         }
     }

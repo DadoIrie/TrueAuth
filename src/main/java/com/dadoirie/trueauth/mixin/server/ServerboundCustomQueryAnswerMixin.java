@@ -2,6 +2,7 @@ package com.dadoirie.trueauth.mixin.server;
 
 import com.dadoirie.trueauth.net.AuthAnswerPayload;
 import com.dadoirie.trueauth.net.AuthQueryTracker;
+import com.dadoirie.trueauth.net.AuthResultConfirmPayload;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.login.ServerboundCustomQueryAnswerPacket;
 import net.minecraft.network.protocol.login.custom.CustomQueryAnswerPayload;
@@ -18,22 +19,30 @@ public abstract class ServerboundCustomQueryAnswerMixin {
             FriendlyByteBuf buf,
             CallbackInfoReturnable<CustomQueryAnswerPayload> cir
     ) {
-        // 只处理 trueauth 发起的那一次查询
+        // Check for AuthResult confirmation first
+        if (AuthQueryTracker.consumeResult(txId)) {
+            boolean hasPayload = buf.readBoolean();
+            if (hasPayload) {
+                cir.setReturnValue(new AuthResultConfirmPayload(buf));
+            } else {
+                cir.setReturnValue(new AuthResultConfirmPayload(""));
+            }
+            return;
+        }
+        
+        // Check for AuthAnswer payload
         if (!AuthQueryTracker.consume(txId)) {
             return;
         }
 
-        // 1. 按原版协议先读 hasPayload
+        // 1. First read `hasPayload` according to the vanilla protocol
         boolean hasPayload = buf.readBoolean();
         if (!hasPayload) {
-            // 客户端说没有 payload，这里你自己决定怎么处理
-            // 比如直接当作失败：
             cir.setReturnValue(new AuthAnswerPayload(false));
             return;
         }
 
-        // 2. 剩下的就是你真正的 payload 内容（一个 boolean ok）
+        // 2. The remaining part is your actual payload content
         cir.setReturnValue(new AuthAnswerPayload(buf));
-        // 对 CallbackInfoReturnable 调用 setReturnValue 会自动标记为已处理，无需再显式 ci.cancel()
     }
 }

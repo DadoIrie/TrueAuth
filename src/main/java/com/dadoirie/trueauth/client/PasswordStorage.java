@@ -33,18 +33,16 @@ public class PasswordStorage {
     
     /**
      * Save both server and user password for a specific user.
-     * Username is stored in lowercase for consistency.
      * 
      * When saving serverPassword, also updates all server entries with newPassword.
      */
     public static void savePasswords(String username, String serverPassword, String userPassword) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
         CompoundTag userData;
-        if (users.contains(key)) {
-            userData = users.getCompound(key);
+        if (users.contains(username)) {
+            userData = users.getCompound(username);
         } else {
             userData = new CompoundTag();
             userData.putString("serverPassword", "");
@@ -69,22 +67,20 @@ public class PasswordStorage {
             userData.putString("userPassword", hashPassword(userPassword));
         }
         
-        users.put(key, userData);
+        users.put(username, userData);
         root.put("users", users);
         save(root);
     }
     
     /**
      * Load the server password for a specific user.
-     * Username lookup uses lowercase for consistency.
      */
     public static String getServerPassword(String username) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
-        if (users.contains(key)) {
-            CompoundTag userData = users.getCompound(key);
+        if (users.contains(username)) {
+            CompoundTag userData = users.getCompound(username);
             return userData.getString("serverPassword");
         }
         
@@ -93,15 +89,13 @@ public class PasswordStorage {
     
     /**
      * Load the user password for a specific user.
-     * Username lookup uses lowercase for consistency.
      */
     public static String getUserPassword(String username) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
-        if (users.contains(key)) {
-            CompoundTag userData = users.getCompound(key);
+        if (users.contains(username)) {
+            CompoundTag userData = users.getCompound(username);
             return userData.getString("userPassword");
         }
         
@@ -110,27 +104,23 @@ public class PasswordStorage {
     
     /**
      * Check if a user exists in storage.
-     * Username lookup uses lowercase for consistency.
      */
     public static boolean userExists(String username) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
-        return users.contains(key);
+        return users.contains(username);
     }
     
     /**
      * Get the password for a specific server for a specific user.
      * Falls back to serverPassword if no server-specific password exists.
-     * Username lookup uses lowercase for consistency.
      */
     public static String getPasswordForServer(String username, String serverHostname) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
-        if (users.contains(key)) {
-            CompoundTag userData = users.getCompound(key);
+        if (users.contains(username)) {
+            CompoundTag userData = users.getCompound(username);
             CompoundTag servers = userData.getCompound("servers");
             
             if (servers.contains(serverHostname)) {
@@ -148,16 +138,14 @@ public class PasswordStorage {
     /**
      * Set the password hash for a specific server for a specific user (already hashed).
      * Used when receiving password from server.
-     * Username is stored in lowercase for consistency.
      */
     public static void setPasswordHashForServer(String username, String serverHostname, String passwordHash) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
         CompoundTag userData;
-        if (users.contains(key)) {
-            userData = users.getCompound(key);
+        if (users.contains(username)) {
+            userData = users.getCompound(username);
         } else {
             userData = new CompoundTag();
             userData.putString("serverPassword", "");
@@ -176,22 +164,20 @@ public class PasswordStorage {
         serverData.putString("password", passwordHash);
         servers.put(serverHostname, serverData);
         userData.put("servers", servers);
-        users.put(key, userData);
+        users.put(username, userData);
         root.put("users", users);
         save(root);
     }
     
     /**
      * Get the new password for a server for a specific user (if any).
-     * Username lookup uses lowercase for consistency.
      */
     public static String getNewPasswordForServer(String username, String serverHostname) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
-        if (users.contains(key)) {
-            CompoundTag userData = users.getCompound(key);
+        if (users.contains(username)) {
+            CompoundTag userData = users.getCompound(username);
             CompoundTag servers = userData.getCompound("servers");
             
             if (servers.contains(serverHostname)) {
@@ -205,15 +191,14 @@ public class PasswordStorage {
     
     /**
      * Check if a server entry exists for a specific user.
-     * Username lookup uses lowercase for consistency.
+     * TODO might be redundant
      */
     public static boolean hasServerEntry(String username, String serverHostname) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
-        if (users.contains(key)) {
-            CompoundTag userData = users.getCompound(key);
+        if (users.contains(username)) {
+            CompoundTag userData = users.getCompound(username);
             CompoundTag servers = userData.getCompound("servers");
             return servers.contains(serverHostname);
         }
@@ -224,15 +209,13 @@ public class PasswordStorage {
     /**
      * Confirm password change for a server for a specific user - remove newPassword.
      * The password field is already set by the server via AuthResultPayload.
-     * Username lookup uses lowercase for consistency.
      */
     public static void confirmPasswordChange(String username, String serverHostname) {
-        String key = username.toLowerCase(Locale.ROOT);
         CompoundTag root = loadOrCreate();
         CompoundTag users = root.getCompound("users");
         
-        if (users.contains(key)) {
-            CompoundTag userData = users.getCompound(key);
+        if (users.contains(username)) {
+            CompoundTag userData = users.getCompound(username);
             CompoundTag servers = userData.getCompound("servers");
             
             if (servers.contains(serverHostname)) {
@@ -240,15 +223,16 @@ public class PasswordStorage {
                 serverData.remove("newPassword");
                 servers.put(serverHostname, serverData);
                 userData.put("servers", servers);
-                users.put(key, userData);
+                users.put(username, userData);
                 root.put("users", users);
                 save(root);
             }
         }
     }
     
-    // ! CRITICAL - Remove or comment this method before release build!
+    // ! CRITICAL
     // ! This is for debugging only - prints the entire NBT structure unobfuscated
+    // TODO Remove or comment this method before release build!
     public static void debugPrintAll() {
         CompoundTag root = loadOrCreate();
         System.out.println("[TrueAuth DEBUG] === Password Storage Contents ===");

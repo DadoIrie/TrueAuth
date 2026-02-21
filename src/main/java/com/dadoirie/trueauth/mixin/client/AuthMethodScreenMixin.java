@@ -1,7 +1,6 @@
 package com.dadoirie.trueauth.mixin.client;
 
 import com.dadoirie.trueauth.client.PasswordScreen;
-import com.dadoirie.trueauth.client.ProfileTypeState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ImageButton;
 import net.minecraft.client.gui.components.Tooltip;
@@ -40,50 +39,45 @@ public abstract class AuthMethodScreenMixin extends Screen {
     private void trueauth$onInit(CallbackInfo ci) {
         AuthMethodScreen self = (AuthMethodScreen) (Object) this;
         
-        // ! CRITICAL - not for release builds - Debug output
-        System.out.println("[TrueAuth] AuthMethodScreenMixin init - isPremium: " + ProfileTypeState.isPremium());
+        var children = this.children();
+        ImageButton mojangButtonToRemove = null;
         
-        if (!ProfileTypeState.isPremium()) {
-            var children = this.children();
-            ImageButton mojangButtonToRemove = null;
-            
-            for (var child : children) {
-                if (child instanceof ImageButton button) {
-                    if (button.getX() == this.width / 2 - 10) {
-                        mojangButtonToRemove = button;
-                        break;
-                    }
+        for (var child : children) {
+            if (child instanceof ImageButton button) {
+                if (button.getX() == this.width / 2 - 10) {
+                    mojangButtonToRemove = button;
+                    break;
                 }
             }
-            
-            if (mojangButtonToRemove != null) {
-                this.removeWidget(mojangButtonToRemove);
-                // ! CRITICAL - not for release builds - Debug output
-                System.out.println("[TrueAuth] Removed Mojang button");
-            }
-            
-            ImageButton trueauthButton = new ImageButton(
-                this.width / 2 - 10, this.height / 2 - 5, 20, 20,
-                TRUEAUTH_BUTTON_TEXTURES,
-                button -> {
-                    // ! CRITICAL - not for release builds - Debug output
-                    System.out.println("[TrueAuth] TrueAuth button clicked! Opening PasswordScreen");
-                    String username = Minecraft.getInstance().getUser().getName();
-                    PasswordScreen.getInstance().open(username, self);
-                },
-                Component.literal("TrueAuth")
-            );
-            trueauthButton.setTooltip(Tooltip.create(
-                Component.literal("Set TrueAuth Password")
-                    .append("\n")
-                    .append(
-                        Component.literal("Configure server and user passwords")
-                            .withStyle(net.minecraft.ChatFormatting.GRAY)
-                    )
-            ));
-            this.addRenderableWidget(trueauthButton);
-            // ! CRITICAL - not for release builds - Debug output
-            System.out.println("[TrueAuth] TrueAuth button added");
         }
+        
+        if (mojangButtonToRemove != null) {
+            this.removeWidget(mojangButtonToRemove);
+            // ! CRITICAL - not for release builds - Debug output
+            System.out.println("[TrueAuth] Removed Mojang button");
+        }
+        
+        ImageButton trueauthButton = new ImageButton(
+            this.width / 2 - 10, this.height / 2 - 5, 20, 20,
+            TRUEAUTH_BUTTON_TEXTURES,
+            button -> {
+                // ! CRITICAL - not for release builds - Debug output
+                System.out.println("[TrueAuth] TrueAuth button clicked! Opening PasswordScreen");
+                String username = Minecraft.getInstance().getUser().getName();
+                PasswordScreen.getInstance().open(username, self);
+            },
+            Component.literal("TrueAuth")
+        );
+        trueauthButton.setTooltip(Tooltip.create(
+            Component.literal("Set TrueAuth Password")
+                .append("\n")
+                .append(
+                    Component.literal("Configure server and user passwords")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY)
+                )
+        ));
+        this.addRenderableWidget(trueauthButton);
+        // ! CRITICAL - not for release builds - Debug output
+        System.out.println("[TrueAuth] TrueAuth button added");
     }
 }

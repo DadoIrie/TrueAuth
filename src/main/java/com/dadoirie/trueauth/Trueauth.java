@@ -8,6 +8,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.fml.loading.LoadingModList;
 import org.slf4j.Logger;
 
 import java.io.Reader;
@@ -20,6 +21,11 @@ public class Trueauth {
     public static final String MODID = "trueauth";
     private static final Logger LOGGER = LogUtils.getLogger();
 
+    private static boolean isFabricApiPresent() {
+        return LoadingModList.get() != null && 
+            LoadingModList.get().getModFileById("fabric_networking_api_v1") != null;
+    }
+
     public Trueauth(IEventBus modBus) {
         // 注册并生成 config/trueauth-common.toml
         TrueauthConfig.register();
@@ -27,8 +33,10 @@ public class Trueauth {
         // 初始化运行时单例（注册表、最近 IP 容错缓存等）
         TrueauthRuntime.init();
 
-        // Initialize Fabric API server networking
-        FabricNetworkHandler.initServer();
+        // Initialize Fabric API server networking only if FFAPI is present
+        if (isFabricApiPresent()) {
+            FabricNetworkHandler.initServer();
+        }
 
         modBus.addListener(this::onConfigLoad);
 

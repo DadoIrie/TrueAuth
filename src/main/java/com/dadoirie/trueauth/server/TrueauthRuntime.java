@@ -4,6 +4,7 @@ public final class TrueauthRuntime {
     private static volatile boolean INIT = false;
     public static NameRegistry NAME_REGISTRY;
     public static RecentIpGraceCache IP_GRACE;
+    public static SkinCache SKIN_CACHE;
 
     public static void init() {
         if (INIT) return;
@@ -11,6 +12,7 @@ public final class TrueauthRuntime {
             if (INIT) return;
             NAME_REGISTRY = new NameRegistry();
             IP_GRACE = new RecentIpGraceCache();
+            SKIN_CACHE = new SkinCache();
             INIT = true;
         }
     }

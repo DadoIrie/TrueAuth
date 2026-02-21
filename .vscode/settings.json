@@ -1,3 +1,5 @@
 {
-  "java.configuration.updateBuildConfiguration": "interactive"
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "java.import.gradle.wrapper.enabled": true,
+  "gradle.nestedProjects": true
 }

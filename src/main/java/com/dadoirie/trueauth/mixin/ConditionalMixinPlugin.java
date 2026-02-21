@@ -1,28 +1,100 @@
 package com.dadoirie.trueauth.mixin;
 
 import com.dadoirie.trueauth.Trueauth;
+import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.fml.loading.LoadingModList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.io.BufferedReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 
 public class ConditionalMixinPlugin implements IMixinConfigPlugin {
     private static final Logger LOGGER = LoggerFactory.getLogger(Trueauth.MODID);
     
     private static final Map<String, String> MIXIN_MOD_REQUIREMENTS = Map.of(
-        "client.AuthMethodScreenMixin", "authme"
+        "com.dadoirie.trueauth.mixin.client.AuthMethodScreenMixin", "authme"
     );
-
+    
+    // Mixins that should NOT apply when FFAPI is present (FFAPI handles these differently)
+    private static final Set<String> SKIP_WHEN_FFAPI_PRESENT = Set.of(
+        "com.dadoirie.trueauth.mixin.server.ServerLoginMixin",
+        "com.dadoirie.trueauth.mixin.server.ServerboundCustomQueryAnswerMixin",
+        "com.dadoirie.trueauth.mixin.client.ClientboundCustomQueryMixin",
+        "com.dadoirie.trueauth.mixin.client.ClientHandshakeMixin",
+        "com.dadoirie.trueauth.mixin.client.AuthResultHandlerMixin"
+    );
+    
+    // Mixins that ONLY apply when FFAPI is present
+    private static final Set<String> REQUIRE_FFAPI = Set.of(
+        "com.dadoirie.trueauth.mixin.server.ServerLoginAccessor"
+    );
+    
+    // Mixins that require a config value to be true: mixinClassName -> configKey
+    private static final Map<String, String> MIXIN_CONFIG_REQUIREMENTS = Map.of(
+        "com.dadoirie.trueauth.mixin.server.OpCommandMixin", "enabledTrueauthOpChanges"
+    );
+    
+    // Log messages when mixin is applied: mixinClassName -> message
+    private static final Map<String, String> MIXIN_APPLY_MESSAGES = Map.of(
+        "com.dadoirie.trueauth.mixin.server.OpCommandMixin", "Applying TrueAuth vanilla op command changes"
+    );
+    
+    // Cache FFAPI detection result
+    private static Boolean ffapiPresent = null;
+    
     private static boolean isModLoaded(String modId) {
         if (LoadingModList.get() != null) {
             return LoadingModList.get().getModFileById(modId) != null;
         }
         return false;
+    }
+    
+    /**
+     * Check if ForgifiedFabricAPI is present.
+     * Uses Fabric Networking API as the indicator class.
+     */
+    public static boolean isFabricApiPresent() {
+        if (ffapiPresent == null) {
+            ffapiPresent = isModLoaded("fabric_networking_api_v1");
+            if (ffapiPresent) {
+                LOGGER.info("[TrueAuth] ForgifiedFabricAPI detected - using Fabric API networking");
+            }
+        }
+        return ffapiPresent;
+    }
+    
+    /**
+     * Read a boolean config value from config file directly.
+     * Returns the value if found, otherwise returns defaultValue.
+     */
+    private static boolean readConfigBoolean(String configKey, boolean defaultValue) {
+        try {
+            Path configPath = FMLPaths.CONFIGDIR.get().resolve("trueauth-common.toml");
+            if (Files.exists(configPath)) {
+                try (BufferedReader reader = Files.newBufferedReader(configPath)) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        // Check if line contains the config key
+                        if (line.contains(configKey)) {
+                            // Extract boolean from the line
+                            if (line.contains("true")) {
+                                return true;
+                            } else if (line.contains("false")) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[TrueAuth] Failed to read {} from config: {}", configKey, e.getMessage());
+        }
+        return defaultValue;
     }
 
     @Override
@@ -36,18 +108,43 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        String mixinName = mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1);
-        
-        String requiredMod = MIXIN_MOD_REQUIREMENTS.get(mixinName);
-        if (requiredMod == null) {
-            return true;
+        String requiredMod = MIXIN_MOD_REQUIREMENTS.get(mixinClassName);
+        if (requiredMod != null) {
+            boolean loaded = isModLoaded(requiredMod);
+            if (!loaded) {
+                LOGGER.info("[TrueAuth] Skipping {} (requires mod '{}' which is not loaded)", mixinClassName, requiredMod);
+            }
+            return loaded;
         }
         
-        boolean loaded = isModLoaded(requiredMod);
-        if (!loaded) {
-            LOGGER.info("[TrueAuth] Skipping {} (requires mod '{}' which is not loaded)", mixinName, requiredMod);
+        // Check FFAPI-specific rules
+        boolean ffapiPresent = isFabricApiPresent();
+        
+        // Skip mixin if FFAPI is present and this mixin conflicts with FFAPI
+        if (SKIP_WHEN_FFAPI_PRESENT.contains(mixinClassName) && ffapiPresent) {
+            LOGGER.info("[TrueAuth] Skipping {} (FFAPI present, using Fabric API networking instead)", mixinClassName);
+            return false;
         }
-        return loaded;
+        
+        // Skip mixin if FFAPI is NOT present but mixin requires it
+        if (REQUIRE_FFAPI.contains(mixinClassName) && !ffapiPresent) {
+            LOGGER.info("[TrueAuth] Skipping {} (requires FFAPI which is not present)", mixinClassName);
+            return false;
+        }
+        
+        // Check config requirements
+        String requiredConfigKey = MIXIN_CONFIG_REQUIREMENTS.get(mixinClassName);
+        if (requiredConfigKey != null) {
+            boolean configValue = readConfigBoolean(requiredConfigKey, false);
+            if (!configValue) {
+                LOGGER.info("[TrueAuth] Skipping {} ({} is false in config)", mixinClassName, requiredConfigKey);
+                return false;
+            } else {
+                LOGGER.info("[TrueAuth] {}", MIXIN_APPLY_MESSAGES.get(mixinClassName));
+            }
+        }
+        
+        return true;
     }
 
     @Override
