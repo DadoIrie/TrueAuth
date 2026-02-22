@@ -15,7 +15,7 @@ public final class AuthDecider {
     }
 
     public static Decision onFailure(String name, String ip) {
-        Decision d = new Decision();
+        Decision decision = new Decision();
 
         // 1) Known premium name: deny offline fallback
         // TODO: might not have usecase
@@ -27,11 +27,11 @@ public final class AuthDecider {
 
         // 2) Recent same IP success grace: temporarily treat as premium
         if (TrueauthConfig.recentIpGraceEnabled()) {
-            Optional<UUID> p = TrueauthRuntime.IP_GRACE.tryGrace(name, ip, TrueauthConfig.recentIpGraceTtlSeconds());
-            if (p.isPresent()) {
-                d.kind = Decision.Kind.PREMIUM_GRACE;
-                d.premiumUuid = p.get();
-                return d;
+            Optional<UUID> premium = TrueauthRuntime.IP_GRACE.tryGrace(name, ip, TrueauthConfig.recentIpGraceTtlSeconds());
+            if (premium.isPresent()) {
+                decision.kind = Decision.Kind.PREMIUM_GRACE;
+                decision.premiumUuid = premium.get();
+                return decision;
             }
         }
 
@@ -42,9 +42,9 @@ public final class AuthDecider {
         } */
 
         // 4) Otherwise deny
-        d.kind = Decision.Kind.DENY;
-        d.denyMessage = "Auth failed, offline entry denied to protect your premium save data. Please try again later.";
-        return d;
+        decision.kind = Decision.Kind.DENY;
+        decision.denyMessage = "Auth failed, offline entry denied to protect your premium save data. Please try again later.";
+        return decision;
     }
 
     private AuthDecider() {}

@@ -62,8 +62,10 @@ public abstract class ServerLoginMixin {
             
             if (AuthProcessor.checkNomojangGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
                 this.authenticatedProfile = AuthProcessor.restoreUuid(name);
-                if (TrueauthConfig.debug()) {
-                    System.out.println("[TrueAuth] nomojang grace: restored profile for " + name + ", uuid=" + this.authenticatedProfile.getId());
+                if (AuthProcessor.checkNomojangGrace(name, ip) && TrueauthConfig.debug()) {
+                    System.out.println("[TrueAuth] nomojang same ip GRACE: restored profile for " + name + ", uuid=" + this.authenticatedProfile.getId());
+                } else {
+                    System.out.println("[TrueAuth] nomojang: restored profile for " + name + ", uuid=" + this.authenticatedProfile.getId());
                 }
                 // Don't return - let the auth query flow continue for password verification
                 // This ensures premium players still verify with password and skin is properly applied
@@ -307,8 +309,8 @@ public abstract class ServerLoginMixin {
         if (TrueauthConfig.debug()) {
             System.out.println("[TrueAuth] session invalid, player: " + name + ", ip: " + ip + ", reason: " + why);
         }
-        AuthDecider.Decision d = AuthDecider.onFailure(name, ip);
-        switch (d.kind) {
+        AuthDecider.Decision decision = AuthDecider.onFailure(name, ip);
+        switch (decision.kind) {
             case PREMIUM_GRACE -> {
                 if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name)) {
                     if (TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
@@ -325,7 +327,7 @@ public abstract class ServerLoginMixin {
                 AuthState.markOfflineFallback(this.connection, TrueauthConfig.nomojangEnabled() ? AuthState.FallbackReason.NOMOJANG : AuthState.FallbackReason.FAILURE);
             }
             case DENY -> {
-                String msg = d.denyMessage != null ? d.denyMessage
+                String msg = decision.denyMessage != null ? decision.denyMessage
                         : "Auth failed, offline entry denied to protect your premium save data. Please try again later.";
                 if (TrueauthConfig.debug()) {
                     System.out.println("[TrueAuth] auth denied, player: " + name + ", ip: " + ip + ", message: " + msg);
