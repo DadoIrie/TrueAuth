@@ -62,7 +62,6 @@ public final class FabricNetworkHandler {
         
         if (profile == null) return;
         
-        // If nomojang is enabled, try same IP recent grace hit -> treat as premium
         if (TrueauthConfig.nomojangEnabled()) {
             String name = profile.getName();
             String ip = AuthProcessor.getIpAddress(accessor.trueauth$getConnection());
@@ -79,14 +78,10 @@ public final class FabricNetworkHandler {
                     System.out.println("[TrueAuth] FFAPI nomojang grace: properties=" + premiumProfile.getProperties().asMap());
                 }
                 
-                // Match the working hasJoinedAsync pattern - use CompletableFuture.supplyAsync + thenAccept
-                CompletableFuture<Void> premiumFuture = CompletableFuture.supplyAsync(() -> premiumProfile)
-                    .thenAccept(p -> {
-                        accessor.trueauth$setAuthenticatedProfile(p);
-                        accessor.trueauth$startClientVerification(p);
-                    });
-                synchronizer.waitFor(premiumFuture);
-                return;
+                // Set the profile and let the normal auth query flow continue
+                // The client will respond with ackOk=false (nomojang mode) and we handle it in handleAuthResponse
+                accessor.trueauth$setAuthenticatedProfile(premiumProfile);
+                // Don't return - let the normal flow continue and send the auth query
             }
         }
         
@@ -109,15 +104,11 @@ public final class FabricNetworkHandler {
             ServerLoginNetworking.LoginSynchronizer synchronizer,
             PacketSender responseSender
     ) {
-        // Get nonce but DON'T remove yet - wait until after successful verification
         String nonce = NONCE_MAP.get(handler);
         
-        // Use accessor mixin to get private fields
         ServerLoginAccessor accessor = (ServerLoginAccessor) handler;
         GameProfile profile = accessor.trueauth$getAuthenticatedProfile();
         
-        // Profile should always be set at this point (QUERY_START fires after handleHello)
-        // If null, something is seriously wrong - disconnect
         if (profile == null) {
             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: ERROR - profile is null, disconnecting");
             AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Server error: no profile found. Please try again."));
@@ -127,36 +118,24 @@ public final class FabricNetworkHandler {
         
         String playerName = profile.getName();
         
-        // Get IP via accessor - make final for lambda capture
         final String ip = AuthProcessor.getIpAddress(accessor.trueauth$getConnection());
         
-        // Whitelist check
         if (!AuthProcessor.whitelistCheck(accessor.trueauth$getConnection(), playerName)) {
             NONCE_MAP.remove(handler);
             return;
         }
         
-        // Read client response
         boolean clientOk = buf.readBoolean();
         String passwordHash = buf.readUtf();
         String newPasswordHash = buf.readUtf();
         
         if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: received response, player=" + playerName + ", nonce=" + nonce + ", understood=" + understood + ", clientOk=" + clientOk);
         
-        // If client says joinServer succeeded, verify with Mojang
         if (clientOk) {
-            // Track timing for debug
-            long startTime = System.currentTimeMillis();
-            
-            // Use LoginSynchronizer to block login until Mojang verification completes
             CompletableFuture<Void> verificationFuture = SessionCheck.hasJoinedAsync(playerName, nonce, ip)
                     .orTimeout(15, TimeUnit.SECONDS)
                     .thenAccept(result -> {
-                        long elapsed = System.currentTimeMillis() - startTime;
-                        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: Mojang verification took " + elapsed + "ms for player=" + playerName);
-                        // Handle timeout
                         if (result == null) {
-                            // This shouldn't happen, but handle gracefully
                             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: ERROR - result is null for player=" + playerName);
                             AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Session verification failed. Please try again."));
                             NONCE_MAP.remove(handler);
@@ -174,30 +153,22 @@ public final class FabricNetworkHandler {
                             
                             GameProfile newProfile = AuthProcessor.buildProfileFromSession(res);
                             
-                            // Record in registries with password
                             TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip, passwordHash);
                             TrueauthRuntime.IP_GRACE.record(res.name(), ip, res.uuid());
                             
-                            // Complete the login - vanilla takes over from here
                             accessor.trueauth$startClientVerification(newProfile);
                             
-                            // NOW remove the nonce - verification complete
                             NONCE_MAP.remove(handler);
                             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: login completed for premium player=" + res.name());
                         } else {
-                            // clientOk=true but Mojang returned empty - SUSPICIOUS!
                             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: SUSPICIOUS - client claimed premium but Mojang returned empty for player=" + playerName);
                             AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Session verification failed. Please try again."));
                             NONCE_MAP.remove(handler);
                         }
                     })
                     .exceptionally(throwable -> {
-                        // Handle timeout and other errors
-                        long elapsed = System.currentTimeMillis() - startTime;
-                        // TimeoutException is wrapped in CompletionException
                         Throwable cause = throwable.getCause();
                         if (cause instanceof TimeoutException) {
-                            if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: TIMEOUT after " + elapsed + "ms - Mojang verification timed out for player=" + playerName);
                             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: TIMEOUT - Mojang verification timed out for player=" + playerName);
                             AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Session verification timed out. Please try again."));
                         } else {
@@ -208,15 +179,12 @@ public final class FabricNetworkHandler {
                         return null;
                     });
             
-            // Block the login until verification completes
             synchronizer.waitFor(verificationFuture);
         } else {
-            // clientOk=false - Offline player (no Minecraft session)
-            
-            if (!AuthProcessor.nameCollisionCheck(accessor.trueauth$getConnection(), playerName, false)) {
+            /* if (!AuthProcessor.nameCollisionCheck(accessor.trueauth$getConnection(), playerName, false)) {
                 NONCE_MAP.remove(handler);
                 return;
-            }
+            } */
             
             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: OFFLINE PLAYER - verifying password for player=" + playerName);
             

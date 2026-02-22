@@ -23,17 +23,13 @@ public class Trueauth {
 
     private static boolean isFabricApiPresent() {
         return LoadingModList.get() != null && 
-            LoadingModList.get().getModFileById("fabric_networking_api_v1-disabled") != null;
+            LoadingModList.get().getModFileById("fabric_networking_api_v1") != null;
     }
 
     public Trueauth(IEventBus modBus) {
-        // 注册并生成 config/trueauth-common.toml
         TrueauthConfig.register();
-
-        // 初始化运行时单例（注册表、最近 IP 容错缓存等）
         TrueauthRuntime.init();
 
-        // Initialize Fabric API server networking only if FFAPI is present
         if (isFabricApiPresent()) {
             FabricNetworkHandler.initServer();
         }

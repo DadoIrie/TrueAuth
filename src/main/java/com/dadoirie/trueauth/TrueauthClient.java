@@ -12,14 +12,12 @@ public class TrueauthClient {
     
     private static boolean isFabricApiPresent() {
         return LoadingModList.get() != null && 
-            LoadingModList.get().getModFileById("fabric_networking_api_v1-disabled") != null;
+            LoadingModList.get().getModFileById("fabric_networking_api_v1") != null;
     }
     
     public TrueauthClient(IEventBus modBus) {
-        // Register the password prompter screen handler
         PasswordPrompter.register();
         
-        // Initialize Fabric API client networking only if FFAPI is present
         if (isFabricApiPresent()) {
             FabricNetworkHandlerClient.init();
         }

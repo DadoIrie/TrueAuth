@@ -20,7 +20,6 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
         "com.dadoirie.trueauth.mixin.client.AuthMethodScreenMixin", "authme"
     );
     
-    // Mixins that should NOT apply when FFAPI is present (FFAPI handles these differently)
     private static final Set<String> SKIP_WHEN_FFAPI_PRESENT = Set.of(
         "com.dadoirie.trueauth.mixin.server.ServerLoginMixin",
         "com.dadoirie.trueauth.mixin.server.ServerboundCustomQueryAnswerMixin",
@@ -29,22 +28,18 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
         "com.dadoirie.trueauth.mixin.client.AuthResultHandlerMixin"
     );
     
-    // Mixins that ONLY apply when FFAPI is present
     private static final Set<String> REQUIRE_FFAPI = Set.of(
         "com.dadoirie.trueauth.mixin.server.ServerLoginAccessor"
     );
     
-    // Mixins that require a config value to be true: mixinClassName -> configKey
     private static final Map<String, String> MIXIN_CONFIG_REQUIREMENTS = Map.of(
         "com.dadoirie.trueauth.mixin.server.OpCommandMixin", "enabledTrueauthOpChanges"
     );
     
-    // Log messages when mixin is applied: mixinClassName -> message
     private static final Map<String, String> MIXIN_APPLY_MESSAGES = Map.of(
         "com.dadoirie.trueauth.mixin.server.OpCommandMixin", "Applying TrueAuth vanilla op command changes"
     );
     
-    // Cache FFAPI detection result
     private static Boolean ffapiPresent = null;
     
     private static boolean isModLoaded(String modId) {
@@ -53,25 +48,17 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
         }
         return false;
     }
-    
-    /**
-     * Check if ForgifiedFabricAPI is present.
-     * Uses Fabric Networking API as the indicator class.
-     */
+
     public static boolean isFabricApiPresent() {
         if (ffapiPresent == null) {
-            ffapiPresent = isModLoaded("fabric_networking_api_v1-disabled");
+            ffapiPresent = isModLoaded("fabric_networking_api_v1");
             if (ffapiPresent) {
                 LOGGER.info("[TrueAuth] ForgifiedFabricAPI detected - using Fabric API networking");
             }
         }
         return ffapiPresent;
     }
-    
-    /**
-     * Read a boolean config value from config file directly.
-     * Returns the value if found, otherwise returns defaultValue.
-     */
+
     private static boolean readConfigBoolean(String configKey, boolean defaultValue) {
         try {
             Path configPath = FMLPaths.CONFIGDIR.get().resolve("trueauth-common.toml");
@@ -79,9 +66,7 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
                 try (BufferedReader reader = Files.newBufferedReader(configPath)) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        // Check if line contains the config key
                         if (line.contains(configKey)) {
-                            // Extract boolean from the line
                             if (line.contains("true")) {
                                 return true;
                             } else if (line.contains("false")) {
@@ -117,22 +102,16 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
             return loaded;
         }
         
-        // Check FFAPI-specific rules
-        boolean ffapiPresent = isFabricApiPresent();
-        
-        // Skip mixin if FFAPI is present and this mixin conflicts with FFAPI
         if (SKIP_WHEN_FFAPI_PRESENT.contains(mixinClassName) && ffapiPresent) {
             LOGGER.info("[TrueAuth] Skipping {} (FFAPI present, using Fabric API networking instead)", mixinClassName);
             return false;
         }
         
-        // Skip mixin if FFAPI is NOT present but mixin requires it
         if (REQUIRE_FFAPI.contains(mixinClassName) && !ffapiPresent) {
             LOGGER.info("[TrueAuth] Skipping {} (requires FFAPI which is not present)", mixinClassName);
             return false;
         }
         
-        // Check config requirements
         String requiredConfigKey = MIXIN_CONFIG_REQUIREMENTS.get(mixinClassName);
         if (requiredConfigKey != null) {
             boolean configValue = readConfigBoolean(requiredConfigKey, false);
