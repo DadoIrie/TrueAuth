@@ -262,7 +262,7 @@ public abstract class ServerLoginMixin {
 
                                 var res = resOpt.get();
 
-                                TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip, payload.passwordHash());
+                                TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip, payload.passwordHash(), false);
                                 TrueauthRuntime.IP_GRACE.record(res.name(), ip, res.uuid());
 
                                 GameProfile newProfile = AuthProcessor.buildProfileFromSession(res);
@@ -308,7 +308,6 @@ public abstract class ServerLoginMixin {
             System.out.println("[TrueAuth] session invalid, player: " + name + ", ip: " + ip + ", reason: " + why);
         }
         AuthDecider.Decision d = AuthDecider.onFailure(name, ip);
-
         switch (d.kind) {
             case PREMIUM_GRACE -> {
                 if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name)) {
@@ -316,14 +315,14 @@ public abstract class ServerLoginMixin {
                         this.authenticatedProfile = new GameProfile(TrueauthRuntime.NAME_REGISTRY.getUuid(name), name);
                     }
                 } else {
-                    AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
+                    AuthState.markOfflineFallback(this.connection, TrueauthConfig.nomojangEnabled() ? AuthState.FallbackReason.NOMOJANG : AuthState.FallbackReason.FAILURE);
                 }
             }
             case OFFLINE -> {
                 if (TrueauthConfig.debug()) {
                     System.out.println("[TrueAuth] offline entry");
                 }
-                AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.FAILURE);
+                AuthState.markOfflineFallback(this.connection, TrueauthConfig.nomojangEnabled() ? AuthState.FallbackReason.NOMOJANG : AuthState.FallbackReason.FAILURE);
             }
             case DENY -> {
                 String msg = d.denyMessage != null ? d.denyMessage

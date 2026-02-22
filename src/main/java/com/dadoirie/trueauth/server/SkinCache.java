@@ -106,7 +106,6 @@ public final class SkinCache {
         try {
             Path file = storageDir.resolve(uuid.toString() + ".json");
             if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] SkinCache: trying to load from " + file);
                 System.out.println("[TrueAuth] SkinCache: file exists=" + Files.exists(file));
             }
             if (Files.exists(file)) {

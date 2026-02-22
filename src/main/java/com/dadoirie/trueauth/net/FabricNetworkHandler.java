@@ -72,12 +72,6 @@ public final class FabricNetworkHandler {
             if (AuthProcessor.checkNomojangGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
                 GameProfile premiumProfile = AuthProcessor.restoreUuid(name);
                 
-                if (TrueauthConfig.debug()) {
-                    System.out.println("[TrueAuth] FFAPI nomojang grace: restored profile for " + name);
-                    System.out.println("[TrueAuth] FFAPI nomojang grace: uuid=" + premiumProfile.getId());
-                    System.out.println("[TrueAuth] FFAPI nomojang grace: properties=" + premiumProfile.getProperties().asMap());
-                }
-                
                 // Set the profile and let the normal auth query flow continue
                 // The client will respond with ackOk=false (nomojang mode) and we handle it in handleAuthResponse
                 accessor.trueauth$setAuthenticatedProfile(premiumProfile);
@@ -146,14 +140,14 @@ public final class FabricNetworkHandler {
                             SessionCheck.HasJoinedResult res = result.get();
                             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: PREMIUM CONFIRMED for player=" + res.name() + ", uuid=" + res.uuid());
                             
-                            if (!AuthProcessor.nameCollisionCheck(accessor.trueauth$getConnection(), res.name(), true)) {
+                            /* if (!AuthProcessor.nameCollisionCheck(accessor.trueauth$getConnection(), res.name(), true)) {
                                 NONCE_MAP.remove(handler);
                                 return;
-                            }
+                            } */
                             
                             GameProfile newProfile = AuthProcessor.buildProfileFromSession(res);
                             
-                            TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip, passwordHash);
+                            TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(res.name(), res.uuid(), ip, passwordHash, false);
                             TrueauthRuntime.IP_GRACE.record(res.name(), ip, res.uuid());
                             
                             accessor.trueauth$startClientVerification(newProfile);

@@ -244,7 +244,6 @@ public final class AuthProcessor {
     
     /**
      * Handles password confirmation from client after AUTH_RESULT.
-     * This is the final auth decision for offline players.
      * - If password hash matches: registers/updates player and marks offline fallback
      * - If password hash mismatches: disconnects the player
      *
@@ -269,16 +268,22 @@ public final class AuthProcessor {
                 }
             } else {
                 String storedHash = TrueauthRuntime.NAME_REGISTRY.getPassword(playerName);
+                UUID uuid = TrueauthRuntime.NAME_REGISTRY.getUuid(playerName);
                 if (!pendingPasswordHash.equals(storedHash)) {
-                    UUID uuid = TrueauthRuntime.NAME_REGISTRY.getUuid(playerName);
-                    TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(playerName, uuid, ip, pendingPasswordHash);
+                    if (TrueauthRuntime.NAME_REGISTRY.isPremium(playerName)) {
+                        TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(playerName, uuid, ip, pendingPasswordHash, true);
+                    } else {
+                        TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(playerName, uuid, ip, pendingPasswordHash);
+                    }
                     if (TrueauthConfig.debug()) {
                         System.out.println("[TrueAuth] password updated for player: " + playerName);
                     }
+                } else {
+                    TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(playerName, uuid, ip, storedHash, true);
                 }
             }
             
-            AuthState.markOfflineFallback(connection, AuthState.FallbackReason.FAILURE);
+            AuthState.markOfflineFallback(connection, TrueauthConfig.nomojangEnabled() ? AuthState.FallbackReason.NOMOJANG : AuthState.FallbackReason.FAILURE);
         } else {
             if (TrueauthConfig.debug()) {
                 System.out.println("[TrueAuth] password hash mismatch from client, player: " + profile.getName());

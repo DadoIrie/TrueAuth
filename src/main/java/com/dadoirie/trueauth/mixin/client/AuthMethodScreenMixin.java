@@ -1,8 +1,10 @@
 package com.dadoirie.trueauth.mixin.client;
 
 import com.dadoirie.trueauth.client.PasswordScreen;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ImageButton;
+// import net.minecraft.client.gui.components.SpriteIconButton;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.client.gui.screens.Screen;
@@ -41,28 +43,31 @@ public abstract class AuthMethodScreenMixin extends Screen {
         
         var children = this.children();
         ImageButton mojangButtonToRemove = null;
+        ImageButton offlineButtonToMove = null;
         
         for (var child : children) {
             if (child instanceof ImageButton button) {
                 if (button.getX() == this.width / 2 - 10) {
                     mojangButtonToRemove = button;
-                    break;
+                }
+                if (button.getX() == this.width / 2 + 14) {
+                    offlineButtonToMove = button;
                 }
             }
         }
         
         if (mojangButtonToRemove != null) {
             this.removeWidget(mojangButtonToRemove);
-            // ! CRITICAL - not for release builds - Debug output
-            System.out.println("[TrueAuth] Removed Mojang button");
+        }
+        
+        if (offlineButtonToMove != null) {
+            offlineButtonToMove.setPosition(this.width / 2 - 10, this.height / 2 - 5);
         }
         
         ImageButton trueauthButton = new ImageButton(
-            this.width / 2 - 10, this.height / 2 - 5, 20, 20,
+            this.width / 2 + 14, this.height / 2 - 5, 20, 20,
             TRUEAUTH_BUTTON_TEXTURES,
             button -> {
-                // ! CRITICAL - not for release builds - Debug output
-                System.out.println("[TrueAuth] TrueAuth button clicked! Opening PasswordScreen");
                 String username = Minecraft.getInstance().getUser().getName();
                 PasswordScreen.getInstance().open(username, self);
             },
@@ -73,11 +78,24 @@ public abstract class AuthMethodScreenMixin extends Screen {
                 .append("\n")
                 .append(
                     Component.literal("Configure server and user passwords")
-                        .withStyle(net.minecraft.ChatFormatting.GRAY)
+                        .withStyle(ChatFormatting.GRAY)
                 )
         ));
         this.addRenderableWidget(trueauthButton);
-        // ! CRITICAL - not for release builds - Debug output
-        System.out.println("[TrueAuth] TrueAuth button added");
+        
+        // TODO account switching
+        /* SpriteIconButton switchProfileButton = SpriteIconButton.builder(
+            Component.literal("Accessibility"),
+            button -> {
+                System.out.println("[TrueAuth] Accessibility button clicked!");
+            },
+            true
+        )
+            .width(20)
+            .sprite(ResourceLocation.withDefaultNamespace("icon/accessibility"), 15, 15)
+            .build();
+        switchProfileButton.setPosition(this.width / 2 + 38, this.height / 2 - 5);
+        switchProfileButton.setTooltip(Tooltip.create(Component.literal("Change Profile")));
+        this.addRenderableWidget(switchProfileButton); */
     }
 }

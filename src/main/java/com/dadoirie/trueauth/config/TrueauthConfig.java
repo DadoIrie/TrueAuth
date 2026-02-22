@@ -27,14 +27,19 @@ public final class TrueauthConfig {
 
     public static String timeoutKickMessage() { return COMMON.timeoutKickMessage.get(); }
     public static String offlineFallbackMessage() { return COMMON.offlineFallbackMessage.get(); }
+    public static boolean showOfflineLongMessage() { return COMMON.showOfflineLongMessage.get(); }
 
     // 新增：短副标题（用于屏幕 Title 区域）
     public static String offlineShortSubtitle() { return COMMON.offlineShortSubtitle.get(); }
+    public static String offlineShortSubtitleTimeout() { return COMMON.offlineShortSubtitleTimeout.get(); }
+    public static String offlineShortSubtitleNoMojang() { return COMMON.offlineShortSubtitleNoMojang.get(); }
     public static String onlineShortSubtitle() { return COMMON.onlineShortSubtitle.get(); }
     
     // 新增：标题文本（用于屏幕 Title 区域）
     public static String offlineTitle() { return COMMON.offlineTitle.get(); }
     public static String onlineTitle() { return COMMON.onlineTitle.get(); }
+    public static String semiPremiumTitle() { return COMMON.semiPremiumTitle.get(); }
+    public static String authStateReport() { return COMMON.authStateReport.get(); }
 
     // 新增：策略相关
     public static boolean allowOfflineForUnknownOnly() { return COMMON.allowOfflineForUnknownOnly.get(); }
@@ -56,14 +61,19 @@ public final class TrueauthConfig {
         public final ModConfigSpec.BooleanValue allowOfflineOnFailure;
         public final ModConfigSpec.ConfigValue<String> timeoutKickMessage;
         public final ModConfigSpec.ConfigValue<String> offlineFallbackMessage;
+        public final ModConfigSpec.BooleanValue showOfflineLongMessage;
 
         // 新增
         public final ModConfigSpec.ConfigValue<String> offlineShortSubtitle;
+        public final ModConfigSpec.ConfigValue<String> offlineShortSubtitleTimeout;
+        public final ModConfigSpec.ConfigValue<String> offlineShortSubtitleNoMojang;
         public final ModConfigSpec.ConfigValue<String> onlineShortSubtitle;
         
         // 新增：标题文本
         public final ModConfigSpec.ConfigValue<String> offlineTitle;
         public final ModConfigSpec.ConfigValue<String> onlineTitle;
+        public final ModConfigSpec.ConfigValue<String> semiPremiumTitle;
+        public final ModConfigSpec.ConfigValue<String> authStateReport;
 
         // 新增 nomojang 配置
         public final ModConfigSpec.BooleanValue nomojangEnabled;
@@ -91,14 +101,20 @@ public final class TrueauthConfig {
                     "offlineFallbackMessage",
                     "Note: You are entering the server in offline mode. If you have a premium account, network issues may have prevented authentication. Please try reconnecting. Continuing to play may result in data loss if authentication succeeds later."
             );
+            showOfflineLongMessage = b.define("showOfflineLongMessage", false);
 
             // Short subtitles for title area
-            offlineShortSubtitle = b.define("offlineShortSubtitle", "Auth failed: Offline mode");
+            offlineShortSubtitle = b.define("offlineShortSubtitle", "Auth failed");
+            offlineShortSubtitleTimeout = b.define("offlineShortSubtitleTimeout", "Auth timed out");
+            offlineShortSubtitleNoMojang = b.define("offlineShortSubtitleNoMojang", "Disabled Mojang auth");
             onlineShortSubtitle  = b.define("onlineShortSubtitle",  "Premium verified");
             
             // Title text
             offlineTitle = b.define("offlineTitle", "Offline Mode");
             onlineTitle  = b.define("onlineTitle",  "Premium Mode");
+            semiPremiumTitle = b.define("semiPremiumTitle", "Semi-Premium");
+            
+            authStateReport = b.comment("How to report auth state to player: 'chat' or 'screen'").define("authStateReport", "chat");
 
             // Policy options
             allowOfflineForUnknownOnly = b.comment("Only allow offline fallback for names that have never been verified as premium.")

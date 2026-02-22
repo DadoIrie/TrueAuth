@@ -1,15 +1,13 @@
 package com.dadoirie.trueauth.server;
 
+import com.dadoirie.trueauth.config.TrueauthConfig;
 import net.minecraft.network.Connection;
 
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Tracks authentication state during login phase for each connection.
- */
 public final class AuthState {
-    public enum FallbackReason { TIMEOUT, FAILURE }
+    public enum FallbackReason { TIMEOUT, FAILURE, NOMOJANG }
 
     private static final ConcurrentHashMap<Connection, FallbackReason> OFFLINE_FALLBACK = new ConcurrentHashMap<>();
 
@@ -19,10 +17,16 @@ public final class AuthState {
         }
     }
 
-    public static Optional<FallbackReason> consume(Connection conn) {
+    public static Optional<String> consume(Connection conn) {
         if (conn == null) return Optional.empty();
-        FallbackReason r = OFFLINE_FALLBACK.remove(conn);
-        return Optional.ofNullable(r);
+        FallbackReason reason = OFFLINE_FALLBACK.remove(conn);
+        if (reason == null) return Optional.empty();
+        String message = switch (reason) {
+            case TIMEOUT -> TrueauthConfig.offlineShortSubtitleTimeout();
+            case FAILURE -> TrueauthConfig.offlineShortSubtitle();
+            case NOMOJANG -> TrueauthConfig.offlineShortSubtitleNoMojang();
+        };
+        return Optional.of(message);
     }
 
     private AuthState() {}

@@ -14,6 +14,7 @@ public class NameRegistry {
     public static class Entry {
         public UUID uuid;
         public boolean premium;
+        public boolean semiPremium;
         public String password;
         public long registeredAt;
         public long firstVerifiedAt;
@@ -41,12 +42,17 @@ public class NameRegistry {
     public synchronized boolean isPremium(String name) {
         return map.get(name).premium;
     }
+    
+    public synchronized boolean isSemiPremium(String name) {
+        return map.get(name).semiPremium;
+    }
 
-    public synchronized void recordPremiumPlayer(String name, UUID uuid, String ip, String passwordHash) {
+    public synchronized void recordPremiumPlayer(String name, UUID uuid, String ip, String passwordHash, boolean semiPremium) {
         Entry entry = map.getOrDefault(name, new Entry());
         entry.uuid = uuid;
         entry.premium = true;
-        if (entry.password == null || (entry.password == "" && passwordHash != "")) entry.password = passwordHash;
+        entry.semiPremium = semiPremium;
+        entry.password = passwordHash;
         long now = Instant.now().toEpochMilli();
         if (entry.firstVerifiedAt == 0) entry.firstVerifiedAt = now;
         entry.lastVerifiedAt = now;
@@ -86,6 +92,7 @@ public class NameRegistry {
                         Entry entry = new Entry();
                         entry.uuid = UUID.fromString(entryObj.get("uuid").getAsString());
                         entry.premium = entryObj.get("premium").getAsBoolean();
+                        if (entryObj.has("semiPremium")) entry.semiPremium = entryObj.get("semiPremium").getAsBoolean();
                         entry.password = entryObj.get("password").getAsString();
                         entry.registeredAt = entryObj.get("registeredAt").getAsLong();
                         if (entryObj.has("firstVerifiedAt")) entry.firstVerifiedAt = entryObj.get("firstVerifiedAt").getAsLong();
@@ -113,6 +120,9 @@ public class NameRegistry {
                 Entry entry = mapEntry.getValue();
                 entryObj.addProperty("uuid", entry.uuid.toString());
                 entryObj.addProperty("premium", entry.premium);
+                if (entry.premium) {
+                    entryObj.addProperty("semiPremium", entry.semiPremium);
+                }
                 entryObj.addProperty("password", entry.password);
                 entryObj.addProperty("registeredAt", entry.registeredAt);
                 if (entry.premium) {

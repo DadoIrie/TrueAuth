@@ -101,6 +101,8 @@ public class ConditionalMixinPlugin implements IMixinConfigPlugin {
             }
             return loaded;
         }
+
+        boolean ffapiPresent = isFabricApiPresent();
         
         if (SKIP_WHEN_FFAPI_PRESENT.contains(mixinClassName) && ffapiPresent) {
             LOGGER.info("[TrueAuth] Skipping {} (FFAPI present, using Fabric API networking instead)", mixinClassName);
