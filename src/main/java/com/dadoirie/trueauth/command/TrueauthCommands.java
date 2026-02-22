@@ -146,23 +146,11 @@ public class TrueauthCommands {
             v = getVal.apply("auth.allowOfflineForUnknownOnly", "allowOfflineForUnknownOnly");
             if (v instanceof Boolean) TrueauthConfig.COMMON.allowOfflineForUnknownOnly.set((Boolean) v);
 
-            v = getVal.apply("auth.allowOfflineOnTimeout", "allowOfflineOnTimeout");
-            if (v instanceof Boolean) TrueauthConfig.COMMON.allowOfflineOnTimeout.set((Boolean) v);
-
-            v = getVal.apply("auth.allowOfflineOnFailure", "allowOfflineOnFailure");
-            if (v instanceof Boolean) TrueauthConfig.COMMON.allowOfflineOnFailure.set((Boolean) v);
-
             // Numeric items
-            v = getVal.apply("auth.timeoutMs", "timeoutMs");
-            if (v instanceof Number) TrueauthConfig.COMMON.timeoutMs.set(((Number) v).longValue());
-
             v = getVal.apply("auth.recentIpGrace.ttlSeconds", "recentIpGrace.ttlSeconds");
             if (v instanceof Number) TrueauthConfig.COMMON.recentIpGraceTtlSeconds.set(((Number) v).intValue());
 
             /// String items
-            v = getVal.apply("auth.timeoutKickMessage", "timeoutKickMessage");
-            if (v != null) TrueauthConfig.COMMON.timeoutKickMessage.set(String.valueOf(v));
-
             v = getVal.apply("auth.offlineFallbackMessage", "offlineFallbackMessage");
             if (v != null) TrueauthConfig.COMMON.offlineFallbackMessage.set(String.valueOf(v));
 

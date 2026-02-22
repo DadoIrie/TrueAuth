@@ -19,19 +19,12 @@ public final class TrueauthConfig {
         ModLoadingContext.get().getActiveContainer().registerConfig(ModConfig.Type.COMMON, COMMON_SPEC);
     }
 
-    public static long timeoutMs() { return COMMON.timeoutMs.get(); }
-    public static boolean allowOfflineOnTimeout() { return COMMON.allowOfflineOnTimeout.get(); }
-
     // 旧开关：保留兼容，但新策略将更细化
-    public static boolean allowOfflineOnFailure() { return COMMON.allowOfflineOnFailure.get(); }
-
-    public static String timeoutKickMessage() { return COMMON.timeoutKickMessage.get(); }
     public static String offlineFallbackMessage() { return COMMON.offlineFallbackMessage.get(); }
     public static boolean showOfflineLongMessage() { return COMMON.showOfflineLongMessage.get(); }
 
     // 新增：短副标题（用于屏幕 Title 区域）
     public static String offlineShortSubtitle() { return COMMON.offlineShortSubtitle.get(); }
-    public static String offlineShortSubtitleTimeout() { return COMMON.offlineShortSubtitleTimeout.get(); }
     public static String offlineShortSubtitleNoMojang() { return COMMON.offlineShortSubtitleNoMojang.get(); }
     public static String onlineShortSubtitle() { return COMMON.onlineShortSubtitle.get(); }
     
@@ -56,16 +49,11 @@ public final class TrueauthConfig {
     public static boolean opPremiumOnly() { return COMMON.opPremiumOnly.get(); }
 
     public static final class Common {
-        public final ModConfigSpec.LongValue timeoutMs;
-        public final ModConfigSpec.BooleanValue allowOfflineOnTimeout;
-        public final ModConfigSpec.BooleanValue allowOfflineOnFailure;
-        public final ModConfigSpec.ConfigValue<String> timeoutKickMessage;
         public final ModConfigSpec.ConfigValue<String> offlineFallbackMessage;
         public final ModConfigSpec.BooleanValue showOfflineLongMessage;
 
         // 新增
         public final ModConfigSpec.ConfigValue<String> offlineShortSubtitle;
-        public final ModConfigSpec.ConfigValue<String> offlineShortSubtitleTimeout;
         public final ModConfigSpec.ConfigValue<String> offlineShortSubtitleNoMojang;
         public final ModConfigSpec.ConfigValue<String> onlineShortSubtitle;
         
@@ -91,12 +79,6 @@ public final class TrueauthConfig {
 
         Common(ModConfigSpec.Builder b) {
             b.push("auth");
-
-            timeoutMs = b.defineInRange("timeoutMs", 10_000L, 1_000L, 600_000L);
-            allowOfflineOnTimeout = b.comment("false: kick on timeout (default), true: allow offline on timeout").define("allowOfflineOnTimeout", false);
-            allowOfflineOnFailure = b.comment("false: kick on failure, true: allow offline on any auth failure (default)").define("allowOfflineOnFailure", true);
-
-            timeoutKickMessage = b.define("timeoutKickMessage", "Login timeout, account verification incomplete");
             offlineFallbackMessage = b.define(
                     "offlineFallbackMessage",
                     "Note: You are entering the server in offline mode. If you have a premium account, network issues may have prevented authentication. Please try reconnecting. Continuing to play may result in data loss if authentication succeeds later."
@@ -105,7 +87,6 @@ public final class TrueauthConfig {
 
             // Short subtitles for title area
             offlineShortSubtitle = b.define("offlineShortSubtitle", "Auth failed");
-            offlineShortSubtitleTimeout = b.define("offlineShortSubtitleTimeout", "Auth timed out");
             offlineShortSubtitleNoMojang = b.define("offlineShortSubtitleNoMojang", "Disabled Mojang auth");
             onlineShortSubtitle  = b.define("onlineShortSubtitle",  "Premium verified");
             

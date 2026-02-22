@@ -89,35 +89,6 @@ public abstract class ServerLoginMixin {
         this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$txId, auth));
     }
 
-    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
-    private void trueauth$onTick(CallbackInfo ci) {
-        if (!this.server.isDedicatedServer()) return;
-        if (this.trueauth$txId == 0 || this.trueauth$sentAt == 0L) return;
-        ci.cancel(); // Prevent the vanilla tick from advancing the login state
-        long timeoutMs = TrueauthConfig.timeoutMs();
-        if (timeoutMs <= 0) return;
-
-        long now = System.currentTimeMillis();
-        if (now - this.trueauth$sentAt < timeoutMs) return;
-
-        if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] handshake timeout (in tick), txId: " + this.trueauth$txId);
-        }
-
-        if (TrueauthConfig.allowOfflineOnTimeout()) {
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] timeout allows offline entry");
-            }
-            AuthState.markOfflineFallback(this.connection, AuthState.FallbackReason.TIMEOUT);
-            reset();
-        } else {
-            String msg = TrueauthConfig.timeoutKickMessage();
-            Component reason = Component.literal(msg != null ? msg : "Login timeout, account verification incomplete");
-            AuthProcessor.sendDisconnectAsync(this.connection, reason);
-            reset();
-        }
-    }
-
     @Inject(method = "handleCustomQueryPacket", at = @At("HEAD"), cancellable = true)
     private void trueauth$onLoginCustom(ServerboundCustomQueryAnswerPacket packet, CallbackInfo ci) {
         if (!this.server.isDedicatedServer()) return;

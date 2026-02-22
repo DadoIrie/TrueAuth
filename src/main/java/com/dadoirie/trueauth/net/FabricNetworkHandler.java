@@ -20,8 +20,6 @@ import org.slf4j.Logger;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import io.netty.buffer.Unpooled;
 
 /**
@@ -127,7 +125,6 @@ public final class FabricNetworkHandler {
         
         if (clientOk) {
             CompletableFuture<Void> verificationFuture = SessionCheck.hasJoinedAsync(playerName, nonce, ip)
-                    .orTimeout(15, TimeUnit.SECONDS)
                     .thenAccept(result -> {
                         if (result == null) {
                             if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: ERROR - result is null for player=" + playerName);
@@ -161,14 +158,8 @@ public final class FabricNetworkHandler {
                         }
                     })
                     .exceptionally(throwable -> {
-                        Throwable cause = throwable.getCause();
-                        if (cause instanceof TimeoutException) {
-                            if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: TIMEOUT - Mojang verification timed out for player=" + playerName);
-                            AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Session verification timed out. Please try again."));
-                        } else {
-                            if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: ERROR - Mojang verification failed for player=" + playerName + ": " + throwable);
-                            AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Session verification failed. Please try again."));
-                        }
+                        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] SERVER: ERROR - Mojang verification failed for player=" + playerName + ": " + throwable);
+                        AuthProcessor.sendDisconnectAsync(accessor.trueauth$getConnection(), Component.literal("Session verification failed. Please try again."));
                         NONCE_MAP.remove(handler);
                         return null;
                     });
