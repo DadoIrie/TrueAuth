@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class AuthState {
-    public enum FallbackReason { FAILURE, NOMOJANG }
+    public enum FallbackReason { FAILURE, NOMOJANG, IP_GRACE }
 
     private static final ConcurrentHashMap<Connection, FallbackReason> OFFLINE_FALLBACK = new ConcurrentHashMap<>();
 
@@ -24,6 +24,7 @@ public final class AuthState {
         String message = switch (reason) {
             case FAILURE -> TrueauthConfig.offlineShortSubtitle();
             case NOMOJANG -> TrueauthConfig.offlineShortSubtitleNoMojang();
+            case IP_GRACE -> TrueauthConfig.offlineShortSubtitleIpGrace();
         };
         return Optional.of(message);
     }

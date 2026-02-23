@@ -60,14 +60,15 @@ public final class FabricNetworkHandler {
         
         if (profile == null) return;
         
-        if (TrueauthConfig.nomojangEnabled()) {
-            String name = profile.getName();
-            String ip = AuthProcessor.getIpAddress(accessor.trueauth$getConnection());
+        String name = profile.getName();
+        String ip = AuthProcessor.getIpAddress(accessor.trueauth$getConnection());
+        
+        if (TrueauthConfig.recentIpGraceEnabled() || TrueauthConfig.nomojangEnabled()) {
             if (TrueauthConfig.debug()) {
                 System.out.println("[TrueAuth] FFAPI nomojang mode: skipping Mojang session auth, player: " + name + ", ip: " + ip);
             }
             
-            if (AuthProcessor.checkNomojangGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
+            if (AuthProcessor.checkIpGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
                 GameProfile premiumProfile = AuthProcessor.restoreUuid(name);
                 
                 // Set the profile and let the normal auth query flow continue
@@ -80,11 +81,11 @@ public final class FabricNetworkHandler {
         String nonce = UUID.randomUUID().toString().replace("-", "");
         NONCE_MAP.put(handler, nonce);
         
-        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] QUERY_START: sending auth query with nonce=" + nonce + ", nomojang=" + TrueauthConfig.nomojangEnabled());
+        if (TrueauthConfig.debug()) System.out.println("[TrueAuth] QUERY_START: sending auth query with nonce=" + nonce + ", skipMojang=" + (AuthProcessor.checkIpGrace(name, ip) || TrueauthConfig.nomojangEnabled()));
         
-        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
         buf.writeUtf(nonce);
-        buf.writeBoolean(TrueauthConfig.nomojangEnabled());
+        buf.writeBoolean(AuthProcessor.checkIpGrace(name, ip) || TrueauthConfig.nomojangEnabled());
         sender.sendPacket(NetIds.AUTH, buf);
     }
     

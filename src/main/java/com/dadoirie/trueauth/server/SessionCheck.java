@@ -57,7 +57,6 @@ public final class SessionCheck {
                 .thenApply(resp -> {
                     if (com.dadoirie.trueauth.config.TrueauthConfig.debug()) {
                         System.out.println("[TrueAuth][DEBUG] Mojang response status code: " + resp.statusCode());
-                        System.out.println("[TrueAuth][DEBUG] Mojang response content: " + resp.body());
                     }
 
                     if (resp.statusCode() != 200) {

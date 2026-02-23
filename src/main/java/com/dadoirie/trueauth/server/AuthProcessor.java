@@ -205,21 +205,14 @@ public final class AuthProcessor {
      * @param ip The player IP address
      * @return true if IP grace found a premium record, false otherwise
      */
-    public static boolean checkNomojangGrace(String playerName, String ip) {
+    public static boolean checkIpGrace(String playerName, String ip) {
         if (!TrueauthConfig.recentIpGraceEnabled() || ip == null) {
             return false;
         }
         
         var pOpt = TrueauthRuntime.IP_GRACE.tryGrace(playerName, ip, TrueauthConfig.recentIpGraceTtlSeconds());
         if (pOpt.isPresent() && pOpt.get() != null) {
-            if (TrueauthConfig.debug()) {
-                System.out.println("[TrueAuth] nomojang: found same IP premium record, uuid=" + pOpt.get());
-            }
             return true;
-        }
-        
-        if (TrueauthConfig.debug()) {
-            System.out.println("[TrueAuth] nomojang: no same IP premium record found");
         }
         return false;
     }
@@ -261,6 +254,7 @@ public final class AuthProcessor {
         if (pendingPasswordHash.equals(clientPasswordHash)) {
             String ip = getIpAddress(connection);
             String playerName = profile.getName();
+            boolean sameIpGrace = checkIpGrace(playerName, ip);
             if (!TrueauthRuntime.NAME_REGISTRY.isRegistered(playerName)) {
                 TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(playerName, profile.getId(), ip, pendingPasswordHash);
                 if (TrueauthConfig.debug()) {
@@ -271,7 +265,7 @@ public final class AuthProcessor {
                 UUID uuid = TrueauthRuntime.NAME_REGISTRY.getUuid(playerName);
                 if (!pendingPasswordHash.equals(storedHash)) {
                     if (TrueauthRuntime.NAME_REGISTRY.isPremium(playerName)) {
-                        TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(playerName, uuid, ip, pendingPasswordHash, true);
+                        TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(playerName, uuid, ip, pendingPasswordHash, sameIpGrace);
                     } else {
                         TrueauthRuntime.NAME_REGISTRY.recordOfflinePlayer(playerName, uuid, ip, pendingPasswordHash);
                     }
@@ -279,11 +273,20 @@ public final class AuthProcessor {
                         System.out.println("[TrueAuth] password updated for player: " + playerName);
                     }
                 } else {
-                    TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(playerName, uuid, ip, storedHash, true);
+                    if (!sameIpGrace) TrueauthRuntime.NAME_REGISTRY.recordPremiumPlayer(playerName, uuid, ip, storedHash, true);
                 }
             }
             
-            AuthState.markOfflineFallback(connection, TrueauthConfig.nomojangEnabled() ? AuthState.FallbackReason.NOMOJANG : AuthState.FallbackReason.FAILURE);
+            // Determine fallback reason based on auth method used
+            AuthState.FallbackReason reason;
+            if (!sameIpGrace && TrueauthConfig.nomojangEnabled()) {
+                reason = AuthState.FallbackReason.NOMOJANG;
+            } else if (sameIpGrace) {
+                reason = AuthState.FallbackReason.IP_GRACE;
+            } else {
+                reason = AuthState.FallbackReason.FAILURE;
+            }
+            AuthState.markOfflineFallback(connection, reason);
         } else {
             if (TrueauthConfig.debug()) {
                 System.out.println("[TrueAuth] password hash mismatch from client, player: " + profile.getName());

@@ -52,17 +52,16 @@ public abstract class ServerLoginMixin {
         if (!this.server.isDedicatedServer()) return;
         if (this.server.usesAuthentication() || this.authenticatedProfile == null) return;
 
-        // If `nomojang` is enabled, use the local strategy directly and do not send a session authentication packet to the client
-        if (TrueauthConfig.nomojangEnabled()) {
-            String name = this.authenticatedProfile.getName();
-            String ip = AuthProcessor.getIpAddress(this.connection);
+        String name = this.authenticatedProfile.getName();
+        String ip = AuthProcessor.getIpAddress(this.connection);
+        if (TrueauthConfig.recentIpGraceEnabled() || TrueauthConfig.nomojangEnabled()) {
             if (TrueauthConfig.debug()) {
                 System.out.println("[TrueAuth] nomojang mode: skipping Mojang session auth, player: " + (name != null ? name : "<unknown>") + ", ip: " + ip);
             }
             
-            if (AuthProcessor.checkNomojangGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
+            if (AuthProcessor.checkIpGrace(name, ip) || (TrueauthRuntime.NAME_REGISTRY.isRegistered(name) && TrueauthRuntime.NAME_REGISTRY.isPremium(name))) {
                 this.authenticatedProfile = AuthProcessor.restoreUuid(name);
-                if (AuthProcessor.checkNomojangGrace(name, ip) && TrueauthConfig.debug()) {
+                if (AuthProcessor.checkIpGrace(name, ip) && TrueauthConfig.debug()) {
                     System.out.println("[TrueAuth] nomojang same ip GRACE: restored profile for " + name + ", uuid=" + this.authenticatedProfile.getId());
                 } else {
                     System.out.println("[TrueAuth] nomojang: restored profile for " + name + ", uuid=" + this.authenticatedProfile.getId());
@@ -85,7 +84,7 @@ public abstract class ServerLoginMixin {
         }
 
         AuthQueryTracker.mark(this.trueauth$txId);
-        AuthPayload auth = new AuthPayload(this.trueauth$nonce, TrueauthConfig.nomojangEnabled());
+        AuthPayload auth = new AuthPayload(this.trueauth$nonce, AuthProcessor.checkIpGrace(name, ip) || TrueauthConfig.nomojangEnabled());
         this.connection.send(new ClientboundCustomQueryPacket(this.trueauth$txId, auth));
     }
 
@@ -280,32 +279,7 @@ public abstract class ServerLoginMixin {
         if (TrueauthConfig.debug()) {
             System.out.println("[TrueAuth] session invalid, player: " + name + ", ip: " + ip + ", reason: " + why);
         }
-        AuthDecider.Decision decision = AuthDecider.onFailure(name, ip);
-        switch (decision.kind) {
-            case PREMIUM_GRACE -> {
-                if (TrueauthRuntime.NAME_REGISTRY.isRegistered(name)) {
-                    if (TrueauthRuntime.NAME_REGISTRY.isPremium(name)) {
-                        this.authenticatedProfile = new GameProfile(TrueauthRuntime.NAME_REGISTRY.getUuid(name), name);
-                    }
-                } else {
-                    AuthState.markOfflineFallback(this.connection, TrueauthConfig.nomojangEnabled() ? AuthState.FallbackReason.NOMOJANG : AuthState.FallbackReason.FAILURE);
-                }
-            }
-            case OFFLINE -> {
-                if (TrueauthConfig.debug()) {
-                    System.out.println("[TrueAuth] offline entry");
-                }
-                AuthState.markOfflineFallback(this.connection, TrueauthConfig.nomojangEnabled() ? AuthState.FallbackReason.NOMOJANG : AuthState.FallbackReason.FAILURE);
-            }
-            case DENY -> {
-                String msg = decision.denyMessage != null ? decision.denyMessage
-                        : "Auth failed, offline entry denied to protect your premium save data. Please try again later.";
-                if (TrueauthConfig.debug()) {
-                    System.out.println("[TrueAuth] auth denied, player: " + name + ", ip: " + ip + ", message: " + msg);
-                }
-                AuthProcessor.sendDisconnectAsync(this.connection, Component.literal(msg));
-            }
-        }
+        AuthProcessor.sendDisconnectAsync(this.connection, Component.literal("Authentication failed: " + why));
     }
 
     @Unique

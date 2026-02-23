@@ -26,6 +26,7 @@ public final class TrueauthConfig {
     // 新增：短副标题（用于屏幕 Title 区域）
     public static String offlineShortSubtitle() { return COMMON.offlineShortSubtitle.get(); }
     public static String offlineShortSubtitleNoMojang() { return COMMON.offlineShortSubtitleNoMojang.get(); }
+    public static String offlineShortSubtitleIpGrace() { return COMMON.offlineShortSubtitleIpGrace.get(); }
     public static String onlineShortSubtitle() { return COMMON.onlineShortSubtitle.get(); }
     
     // 新增：标题文本（用于屏幕 Title 区域）
@@ -55,6 +56,7 @@ public final class TrueauthConfig {
         // 新增
         public final ModConfigSpec.ConfigValue<String> offlineShortSubtitle;
         public final ModConfigSpec.ConfigValue<String> offlineShortSubtitleNoMojang;
+        public final ModConfigSpec.ConfigValue<String> offlineShortSubtitleIpGrace;
         public final ModConfigSpec.ConfigValue<String> onlineShortSubtitle;
         
         // 新增：标题文本
@@ -88,6 +90,7 @@ public final class TrueauthConfig {
             // Short subtitles for title area
             offlineShortSubtitle = b.define("offlineShortSubtitle", "Auth failed");
             offlineShortSubtitleNoMojang = b.define("offlineShortSubtitleNoMojang", "Disabled Mojang auth");
+            offlineShortSubtitleIpGrace = b.define("offlineShortSubtitleIpGrace", "IP Grace verified");
             onlineShortSubtitle  = b.define("onlineShortSubtitle",  "Premium verified");
             
             // Title text
