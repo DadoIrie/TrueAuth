@@ -56,7 +56,9 @@ Option to skip Mojang session server verification entirely. Relies on IP grace f
 Built-in whitelist that reads from Minecraft's `whitelist.json` and `ops.json`. Can also add players directly via commands with optional "premium only" restriction.
 
 ### AuthMe Integration
-Optionally integrates with the AuthMe mod to add a password configuration button to the account selection screen.
+If AuthMe is installed, TrueAuth adds a password button to the auth method screen. This is currently the only way to change your server password or user password after the initial setup.
+
+**Password syncing:** You set one server password that works across all TrueAuth servers. When you change it, the new password automatically syncs to each server the next time you join. The client handles this seamlessly under the hood - you don't need to manually update each server.
 
 ## Requirements
 
@@ -154,7 +156,7 @@ Config file: `config/trueauth-common.toml`
 ## Compatibility
 
 - **Forgified Fabric API**: **Recommended.** If present, uses Fabric networking API instead of mixin-based packet handling. The mixin-based networking can have compatibility issues with other mods, so installing Forgified Fabric API is strongly recommended for stability.
-- **AuthMe**: Optional integration for password UI on account selection screen
+- **AuthMe**: Optional integration for password UI on auth method screen
 - **Proxies (Bungee/Velocity)**: Not verified since I have no experience with proxies - will need to take a closer look at it
 
 ## Privacy
