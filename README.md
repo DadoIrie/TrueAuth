@@ -188,5 +188,5 @@ GNU LGPL 3.0
 - ForgeGradle.
 
 ---
-Based on [TrueAuth](https://github.com/YuWan-030/TrueAuth/tree/1.21) NeoForge 1.21.1 branch by [@YuWan-030](https://github.com/YuWan-030), licensed under LGPL‑3.0
+Based on [TrueAuth](https://github.com/YuWan-030/TrueAuth/tree/1.21) NeoForge 1.21.1 branch by [@YuWan-030](https://github.com/YuWan-030), licensed under LGPL‑3.0<br>
 Forked mod maintained by: [@DadoIrie](https://github.com/DadoIrie)
