@@ -65,7 +65,10 @@ public class TrueauthCommands {
                                 .executes(ctx -> mojangStatus(ctx.getSource()))
                         )
                 )
-                .then(Commands.literal("link")
+                // TODO: Link command disabled - needs rewrite to use TrueAuth's password-based authentication
+                // instead of the old TrueUUID implementation. The current code doesn't integrate with
+                // the new NameRegistry password system and may cause data inconsistencies.
+                /* .then(Commands.literal("link")
                         .then(Commands.argument("name", StringArgumentType.word())
                                 .executes(ctx -> run(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "name"),
@@ -80,7 +83,7 @@ public class TrueauthCommands {
                                         .executes(ctx -> run(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name"),
                                                 true, true, true, true, true))))
-                )
+                ) */
                 .then(Commands.literal("reload")
                         .executes(ctx -> cmdConfigReload(ctx.getSource()))
                 )

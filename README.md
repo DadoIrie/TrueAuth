@@ -1,144 +1,185 @@
 # TrueAuth
 
-A NeoForge 1.21.1 mod that securely verifies premium accounts on an offline-mode server during the login phase, without sending the player's access token to the server.
+> **Alpha Release** - This mod is currently in alpha stage. Some features may be incomplete or have bugs. Reporting issues on GitHub is highly appreciated and helps achieve a stable full release.
 
-TrueAuth lets an offline-mode server:
-- Ask the client to perform Mojang "joinServer" locally.
-- Verify with Mojang Session Server from the server using a nonce.
-- If verification passes: replace the player's UUID with the official premium UUID, fix username casing, and inject skin properties.
-- If verification fails or times out: configurable behavior (kick on timeout by default; controlled fallbacks for failures).
-- Inform the player on join with a Title whether they are in "Online/Premium Mode" or "Offline Mode" and send an explanatory chat message for offline fallback.
+A NeoForge mod that lets offline-mode servers verify premium accounts during login, without the player's access token ever leaving their client.
 
-Note: Client and server must both install this mod. The server must run in offline mode.
+## What it does
 
-## Highlights
+When running a server in offline mode (`online-mode=false`), you normally lose the ability to verify if players actually own the Minecraft accounts they're claiming. TrueAuth fixes this by having the client perform Mojang's `joinServer` verification locally, then having the server check with Mojang's session servers.
 
-- Privacy-preserving: the player's access token never leaves the client. The client calls `joinServer(profile, token, nonce)` locally.
-- Better identity integrity: even in offline mode, verified players keep their official UUID and skins.
-- Clear UX: Title messages for premium vs offline mode, plus a chat hint when falling back to offline.
-- Data safety policies to prevent data split between online/offline UUIDs.
+If verification succeeds, the player gets their real premium UUID and skin. If it fails or they don't have a premium account, they can still join with an offline UUID after setting up a password.
 
-## New features and policies
+**Both client and server need this mod installed.**
 
-- Name Registry: Persistently records names that have successfully verified as premium (name -> premium UUID).
-- Policy: allowOfflineForUnknownOnly
-    - Only allow offline fallback for names that have never verified as premium.
-- Recent IP Grace (optional)
-    - If the same name and IP had a successful verification within a short TTL (e.g., 5 minutes), a temporary premium session can be granted if verification fails. Useful to handle transient network hiccups. Use with caution on shared IP environments.
-- Admin command: /trueauth link <name>
-    - Migrate/merge an offline UUID’s data to the premium UUID. Supports dry-run and backups.
-- Reliable disconnect reason on 1.20.x Forge
-    - During login, the server now explicitly sends the login/game disconnect packet so the client shows the detailed reason, not just “Disconnected”.
+## For Players
 
-## How it works
+**Important:** This mod requires both the server and client to have it installed. Installing it on your client alone won't do anything for servers without TrueAuth.
 
-1. Server is in offline mode. During login (HELLO), the server sends a custom login query with a nonce (transactionId + identifier `trueauth:auth` + data).
-2. The modded client intercepts this query, reads the nonce, and locally calls `MinecraftSessionService.joinServer(profile, token, nonce)` (token never sent to the server).
-3. The client replies with a boolean ack (no sensitive data).
-4. The server calls Mojang Session Server `/hasJoined?username={name}&serverId={nonce}[&ip={ip}]`.
-5. If success:
-    - Replace the pending login `GameProfile` with premium UUID and the name returned from Mojang (ensuring correct casing).
-    - Inject skin properties (textures) with signature into the `GameProfile` property map.
-    - After join, force-refresh player info so skins update.
-    - Show a green Title “Premium Mode” with a short subtitle (configurable).
-6. If failure:
-    - By default:
-        - Timeout: kick with configurable message.
-        - Failure: behavior governed by policies below (see Configuration). Offline fallback shows a red Title “Offline Mode” with a short subtitle and chat explanation.
+**Password prompts:** When you open the multiplayer screen, you will be prompted to set a server password (this is required to access multiplayer). This password is only used for servers running TrueAuth. If you connect to a server without TrueAuth, your stored password won't be used there.
+
+If the server has TrueAuth installed:
+- If you have a premium account, you'll get your proper skin and UUID automatically
+- If you're on a shared computer, you can set a user password to lock multiplayer access with a password
+
+## Features
+
+### Premium Verification
+- Client calls `joinServer` locally - access token never sent to server
+- Server verifies with Mojang session servers
+- Premium players get their official UUID and skin
+
+### Password Authentication
+- All players must set a server password when opening the multiplayer screen (required to access multiplayer)
+- This password is used when Mojang verification fails or NoMojang mode is enabled
+- Passwords are hashed client-side with SHA-256 before transmission
+- Server stores only the hash, never plain text
+- Per-server password storage on the client
+- Optional user password for shared computers (locks access to multiplayer)
+
+### Identity Protection
+- Name Registry tracks which names have verified as premium
+- Prevents offline players from using names already claimed by premium accounts
+- Prevents premium players from taking names registered to offline players
+- Data migration command to merge offline and premium player data
+
+### IP Grace (Optional)
+If a player's verification fails but they recently verified successfully from the same IP, they can still get their premium UUID. Useful for handling network hiccups. Should be used cautiously on shared networks.
+
+### Semi-Premium Status
+When a known premium player's Mojang verification fails but they authenticate successfully via password, they're marked as "semi-premium". They still get their premium UUID and cached skin, but the notification shows "Semi-Premium" instead of "Premium Mode" to indicate the player identity was confirmed via password rather than a fresh Mojang verification.
+
+### NoMojang Mode
+Option to skip Mojang session server verification entirely. Relies on IP grace for premium UUID assignment. Useful when Mojang servers are unreachable.
+
+### Whitelist System
+Built-in whitelist that reads from Minecraft's `whitelist.json` and `ops.json`. Can also add players directly via commands with optional "premium only" restriction.
+
+### AuthMe Integration
+Optionally integrates with the AuthMe mod to add a password configuration button to the account selection screen.
 
 ## Requirements
 
-- Minecraft: 1.20.x
-- Forge: 47.x (e.g., 47.4.0+)
-- Java: 17
-- Client and server must both install this mod.
-- Server property: `online-mode=false`
-
-## Configuration
-
-Generated at first run:
-- `config/trueauth-common.toml`
-
-Keys and defaults:
-
-- auth.timeoutMs = 10000
-    - Login-phase wait time (ms) for the client's reply.
-- auth.allowOfflineOnTimeout = false
-    - false: kick on timeout (default)
-    - true: allow offline fallback if timeout occurs
-- auth.allowOfflineOnFailure = true
-    - Legacy broad fallback switch; fine-grained new policies below take precedence in most flows.
-- auth.timeoutKickMessage = "登录超时，未完成账号校验"
-    - Kick reason shown on timeout.
-- auth.offlineFallbackMessage = "注意：你当前以离线模式进入服务器；如果你是正版账号，可能是网络原因导致无法成功鉴权，请重新登陆重试。继续游玩，若后续鉴权成功可能会丢失玩家数据。"
-    - Chat message shown to the player if they were allowed in via offline fallback.
-- auth.offlineShortSubtitle = "鉴权失败：离线模式"
-    - Short subtitle for Title when in offline mode.
-- auth.onlineShortSubtitle = "已通过正版校验"
-    - Short subtitle for Title when in premium mode.
-- auth.allowOfflineForUnknownOnly = true
-    - Only names that have never verified as premium may fall back to offline.
-- auth.recentIpGrace.enabled = true
-    - Enable recent-IP grace window.
-- auth.recentIpGrace.ttlSeconds = 300
-    - TTL for recent-IP grace (suggested 60–600).
-
-Notes:
-- Recent IP Grace is a usability feature, not strong security. Do not use a large TTL. Avoid enabling on shared networks if you have strict identity requirements.
-- The legacy `allowOfflineOnFailure` is still respected, but the new policies are recommended.
+- Minecraft 1.21.1
+- NeoForge 21.1.x
+- Java 21
+- Server must have `online-mode=false`
+- Both client and server must have the mod installed
 
 ## Commands
 
-- /trueauth link <name>
-    - Migrate data from the offline UUID (derived from name) to the premium UUID recorded in the registry.
-    - Subcommands (examples):
-        - /trueauth link dryrun <name>  — show planned moves/merges, no writes.
-        - /trueauth link run <name>     — perform migration (backs up by default in the example implementation).
-    - Behavior:
-        - If premium data files do not exist, offline files are moved to premium.
-        - If both exist, premium wins by default; merging of inventories/ender/stats can be implemented as needed (placeholders provided).
+All commands require OP level 3+.
 
-Affected files (per UUID):
-- world/playerdata/<uuid>.dat
-- world/advancements/<uuid>.json
-- world/stats/<uuid>.json
+```
+/trueauth config nomojang status     - Check if NoMojang mode is enabled
+/trueauth config nomojang on/off     - Enable/disable NoMojang mode
+/trueauth config nomojang toggle     - Toggle NoMojang mode
 
-Backups:
-- Stored under world/backups/trueauth/<timestamp>/<name>/
+/trueauth mojang status              - Test connection to Mojang session servers
 
-## Troubleshooting
+/trueauth reload                     - Reload config from disk
 
-- Client shows “Disconnected” without the custom reason:
-    - On Forge 47.4.x, login/config stages can race. The server side now explicitly sends both login and game disconnect packets before closing to ensure the client UI displays the reason. If you still see plain “Disconnected”, test with a clean client (no UI/GUI overhaul mods).
+/trueauth whitelist add <name>       - Add player to whitelist
+/trueauth whitelist add <name> premium  - Add with premium-only restriction
+/trueauth whitelist remove <name>    - Remove player from whitelist
+/trueauth whitelist list             - List whitelisted players
+```
 
-- Skins not updating immediately:
-    - The server broadcasts a PlayerInfo refresh on join. If a client-side mod overrides skin handling, ensure it does not block vanilla updates.
+### Link Command (Not Yet Implemented)
+The link command for migrating offline player data to premium UUID is currently disabled. It needs to be rewritten to integrate with TrueAuth's password-based authentication system. The old implementation from the forked TrueUUID mod is not compatible with the current architecture.
 
-## Compatibility and notes
+## Configuration
 
-- Proxies (Bungee/Velocity): The server optionally includes the client IP in the Mojang `/hasJoined` call when available. If behind a proxy that hides the real IP, verification still works (the IP parameter is optional).
-- Data integrity: With the new policies, once a name is proven premium, offline fallback is denied to prevent “dual identity” and data split.
-- If the client is unmodded: it will not respond to the custom login query. Depending on config/policies, the server may kick or fall back to offline only for unknown names.
-- **⚠️ Incompatible with OfflineAuth mod**: This fork uses its own built-in password authentication system for offline players and is not compatible with the OfflineAuth mod. Do not use both together.
-- **Forgified Fabric API**: Added compatibility with Forgified Fabric API's networking module.
+Config file: `config/trueauth-common.toml`
 
-## Building
+```toml
+[auth]
+    # Message shown when joining in offline mode
+    offlineFallbackMessage = "Note: You are entering the server in offline mode..."
+    
+    # Whether to show the long offline message
+    showOfflineLongMessage = false
+    
+    # Notification messages (shown via screen overlay or chat depending on authStateReport)
+    offlineTitle = "Offline Mode"
+    onlineTitle = "Premium Mode"
+    semiPremiumTitle = "Semi-Premium"
+    
+    # Subtitle variants for different scenarios
+    offlineShortSubtitle = "Auth failed"
+    offlineShortSubtitleNoMojang = "Disabled Mojang auth"
+    offlineShortSubtitleIpGrace = "IP Grace verified"
+    onlineShortSubtitle = "Premium verified"
+    
+    # How to notify players of auth state: "chat" or "screen"
+    authStateReport = "chat"
+    
+    # Only allow offline fallback for names never verified as premium
+    allowOfflineForUnknownOnly = true
+    
+    # IP Grace settings
+    recentIpGrace.enabled = true
+    recentIpGrace.ttlSeconds = 300    # 5 minutes, recommended 60-600
+    
+    # NoMojang mode - skip Mojang verification
+    nomojang.enabled = false
+    mojangReverseProxy = "https://sessionserver.mojang.com"
+    
+    # Whitelist
+    whitelist.enabled = false
+    
+    # OP command replacement
+    op.enabledTrueauthOpChanges = false
+    op.premiumOnly = true    # Only premium players can be opped
+    
+    # Debug logging
+    debug = false
+```
 
-- Clone the repo.
-- Run:
-    - Windows: `gradlew.bat build`
-    - macOS/Linux: `./gradlew build`
-- The built mod is at: `build/libs/trueauth-<version>.jar`
+## How it Works
+
+1. During login (HELLO phase), server sends a custom login query with a nonce
+2. Client receives the nonce and calls `joinServer(profile, token, nonce)` locally
+3. Client sends back a response with the result and password hash
+4. Server contacts Mojang's session server to verify the nonce
+5. If verified:
+   - Player's profile is replaced with premium UUID
+   - Skin properties are injected
+   - Player is notified with "Premium Mode" message
+6. If not verified:
+   - Player can join with offline UUID if they have a password set
+   - Known premium players get their premium UUID and are marked as "semi-premium" (see Semi-Premium Status section)
+   - Player is notified with "Offline Mode" or "Semi-Premium" message accordingly
+
+## Compatibility
+
+- **Forgified Fabric API**: **Recommended.** If present, uses Fabric networking API instead of mixin-based packet handling. The mixin-based networking can have compatibility issues with other mods, so installing Forgified Fabric API is strongly recommended for stability.
+- **AuthMe**: Optional integration for password UI on account selection screen
+- **Proxies (Bungee/Velocity)**: Not verified since I have no experience with proxies - will need to take a closer look at it
 
 ## Privacy
 
-- The player's access token is never sent to your server. The token is used locally on the client to call `joinServer`.
-- The server only receives a boolean ack and then itself contacts Mojang's session server to verify the nonce.
-- **Offline player passwords**: For players who cannot verify with Mojang, this mod uses an password authentication system. Passwords are hashed client-side using SHA-256 before being sent to the server when connecting to it. The server stores only the hashed password and are never transmitted to any external server or services.
+- Player access tokens never leave the client
+- Server only receives a boolean acknowledgment from the client
+- Passwords are hashed client-side before transmission
+- Server stores only password hashes
+- No data is sent to any external services other than Mojang's session servers
+
+## Building
+
+```bash
+# Windows
+gradlew.bat build
+
+# macOS/Linux
+./gradlew build
+```
+
+Output: `build/libs/trueauth-<version>-neoforge1.21.1.jar`
 
 ## License
 
-- GNU LGPL 3.0 (see `gradle.properties` / project license)
+GNU LGPL 3.0
 
 ## Credits
 

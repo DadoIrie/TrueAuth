@@ -19,17 +19,17 @@ public final class TrueauthConfig {
         ModLoadingContext.get().getActiveContainer().registerConfig(ModConfig.Type.COMMON, COMMON_SPEC);
     }
 
-    // 旧开关：保留兼容，但新策略将更细化
+    // Message shown when joining in offline mode
     public static String offlineFallbackMessage() { return COMMON.offlineFallbackMessage.get(); }
     public static boolean showOfflineLongMessage() { return COMMON.showOfflineLongMessage.get(); }
 
-    // 新增：短副标题（用于屏幕 Title 区域）
+    // Subtitle variants for different scenarios (shown via screen overlay or chat depending on authStateReport)
     public static String offlineShortSubtitle() { return COMMON.offlineShortSubtitle.get(); }
     public static String offlineShortSubtitleNoMojang() { return COMMON.offlineShortSubtitleNoMojang.get(); }
     public static String offlineShortSubtitleIpGrace() { return COMMON.offlineShortSubtitleIpGrace.get(); }
     public static String onlineShortSubtitle() { return COMMON.onlineShortSubtitle.get(); }
     
-    // 新增：标题文本（用于屏幕 Title 区域）
+    // Notification messages (shown via screen overlay or chat depending on authStateReport)
     public static String offlineTitle() { return COMMON.offlineTitle.get(); }
     public static String onlineTitle() { return COMMON.onlineTitle.get(); }
     public static String semiPremiumTitle() { return COMMON.semiPremiumTitle.get(); }
@@ -87,18 +87,18 @@ public final class TrueauthConfig {
             );
             showOfflineLongMessage = b.define("showOfflineLongMessage", false);
 
-            // Short subtitles for title area
-            offlineShortSubtitle = b.define("offlineShortSubtitle", "Auth failed");
+            // Subtitle variants for different scenarios (shown via screen overlay or chat depending on authStateReport)
+            offlineShortSubtitle = b.comment("Subtitle variants for different scenarios (shown via screen overlay or chat depending on authStateReport)").define("offlineShortSubtitle", "Auth failed");
             offlineShortSubtitleNoMojang = b.define("offlineShortSubtitleNoMojang", "Disabled Mojang auth");
             offlineShortSubtitleIpGrace = b.define("offlineShortSubtitleIpGrace", "IP Grace verified");
             onlineShortSubtitle  = b.define("onlineShortSubtitle",  "Premium verified");
             
-            // Title text
-            offlineTitle = b.define("offlineTitle", "Offline Mode");
+            // Notification messages (shown via screen overlay or chat depending on authStateReport)
+            offlineTitle = b.comment("Notification messages (shown via screen overlay or chat depending on authStateReport)").define("offlineTitle", "Offline Mode");
             onlineTitle  = b.define("onlineTitle",  "Premium Mode");
             semiPremiumTitle = b.define("semiPremiumTitle", "Semi-Premium");
             
-            authStateReport = b.comment("How to report auth state to player: 'chat' or 'screen'").define("authStateReport", "chat");
+            authStateReport = b.comment("How to notify players of auth state: 'chat' or 'screen'").define("authStateReport", "chat");
 
             // Policy options
             allowOfflineForUnknownOnly = b.comment("Only allow offline fallback for names that have never been verified as premium.")
